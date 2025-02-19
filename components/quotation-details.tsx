@@ -184,7 +184,7 @@ export function QuotationDetails({ id }: QuotationDetailsProps) {
           Export PDF
         </Button>
       </div>
-      <QuotationResultsComponent results={quotation} />
+      <QuotationResultsComponent results={quotation} comparisonResults={comparisonQuotation} />
       <div>
         <h3 className="text-lg font-semibold mb-2">Compare with another quotation</h3>
         <div className="flex items-center space-x-4">
@@ -207,12 +207,6 @@ export function QuotationDetails({ id }: QuotationDetailsProps) {
           )}
         </div>
       </div>
-      {comparisonQuotation && (
-        <div>
-          <h3 className="text-lg font-semibold mb-2">Comparison: {comparisonQuotation.name}</h3>
-          <QuotationResultsComponent results={comparisonQuotation} />
-        </div>
-      )}
     </div>
   )
 }

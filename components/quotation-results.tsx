@@ -30,9 +30,35 @@ interface QuotationResultsProps {
     grossMargin: number
     grossProfitability: number
   }
+  comparisonResults?: {
+    ticketQuantity: number
+    platformFee: number
+    ticketingFee: number
+    additionalServices: number
+    paywayFees: {
+      credit: number
+      debit: number
+      cash: number
+      total: number
+    }
+    palco4Cost: number
+    lineCost: number
+    operationalCosts: {
+      credentials: number
+      ticketing: number
+      supervisors: number
+      operators: number
+      mobility: number
+      total: number
+    }
+    totalRevenue: number
+    totalCosts: number
+    grossMargin: number
+    grossProfitability: number
+  }
 }
 
-export function QuotationResults({ results }: QuotationResultsProps) {
+export function QuotationResults({ results, comparisonResults }: QuotationResultsProps) {
   if (!results) {
     return null
   }
@@ -46,7 +72,7 @@ export function QuotationResults({ results }: QuotationResultsProps) {
   const costsData = [
     { name: "Comisiones de Pago", value: results.paywayFees.total },
     { name: "Palco 4", value: results.palco4Cost },
-    { name: "Costo de Línea", value: results.lineCost },
+    { name: "Line", value: results.lineCost },
     { name: "Costos Operativos", value: results.operationalCosts.total },
   ]
 
@@ -55,6 +81,159 @@ export function QuotationResults({ results }: QuotationResultsProps) {
     { name: "Costos", value: results.totalCosts },
     { name: "Margen Bruto", value: results.grossMargin },
   ]
+
+  const getPercentageDifference = (value1: number, value2: number) => {
+    if (value1 === 0) return 0
+    return ((value2 - value1) / value1) * 100
+  }
+
+  const renderComparison = () => {
+    if (!comparisonResults) return null
+
+    const differences = {
+      revenue: getPercentageDifference(results.totalRevenue, comparisonResults.totalRevenue),
+      costs: getPercentageDifference(results.totalCosts, comparisonResults.totalCosts),
+      margin: getPercentageDifference(results.grossMargin, comparisonResults.grossMargin),
+      profitability: comparisonResults.grossProfitability - results.grossProfitability
+    }
+
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-2 gap-8">
+          {/* Primera Cotización */}
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Cotización Original</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div>
+                    <div className="text-sm font-medium text-muted-foreground">Ingresos Totales</div>
+                    <div className="text-2xl font-bold">${results.totalRevenue.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-muted-foreground">Costos Totales</div>
+                    <div className="text-2xl font-bold">${results.totalCosts.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-muted-foreground">Margen Bruto</div>
+                    <div className="text-2xl font-bold">${results.grossMargin.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-muted-foreground">Rentabilidad</div>
+                    <div className="text-2xl font-bold">{results.grossProfitability.toFixed(2)}%</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Segunda Cotización */}
+          <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Cotización Comparada</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div>
+                    <div className="text-sm font-medium text-muted-foreground">Ingresos Totales</div>
+                    <div className="text-2xl font-bold">${comparisonResults.totalRevenue.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-muted-foreground">Costos Totales</div>
+                    <div className="text-2xl font-bold">${comparisonResults.totalCosts.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-muted-foreground">Margen Bruto</div>
+                    <div className="text-2xl font-bold">${comparisonResults.grossMargin.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-muted-foreground">Rentabilidad</div>
+                    <div className="text-2xl font-bold">{comparisonResults.grossProfitability.toFixed(2)}%</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {/* Análisis Comparativo */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Análisis Comparativo</CardTitle>
+            <CardDescription>Diferencias principales entre las cotizaciones</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-8">
+              {/* Diferencias Generales */}
+              <div className="space-y-4">
+                <h3 className="font-semibold">Diferencias Porcentuales</h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span>Ingresos:</span>
+                    <span className={differences.revenue >= 0 ? "text-green-600" : "text-red-600"}>
+                      {differences.revenue > 0 ? "+" : ""}{differences.revenue.toFixed(2)}%
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Costos:</span>
+                    <span className={differences.costs <= 0 ? "text-green-600" : "text-red-600"}>
+                      {differences.costs > 0 ? "+" : ""}{differences.costs.toFixed(2)}%
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Margen:</span>
+                    <span className={differences.margin >= 0 ? "text-green-600" : "text-red-600"}>
+                      {differences.margin > 0 ? "+" : ""}{differences.margin.toFixed(2)}%
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Rentabilidad:</span>
+                    <span className={differences.profitability >= 0 ? "text-green-600" : "text-red-600"}>
+                      {differences.profitability > 0 ? "+" : ""}{differences.profitability.toFixed(2)} puntos
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Diferencias en Costos */}
+              <div className="space-y-4">
+                <h3 className="font-semibold">Diferencias en Costos</h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span>Comisiones:</span>
+                    <span className={comparisonResults.paywayFees.total - results.paywayFees.total <= 0 ? "text-green-600" : "text-red-600"}>
+                      ${(comparisonResults.paywayFees.total - results.paywayFees.total).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Operativos:</span>
+                    <span className={comparisonResults.operationalCosts.total - results.operationalCosts.total <= 0 ? "text-green-600" : "text-red-600"}>
+                      ${(comparisonResults.operationalCosts.total - results.operationalCosts.total).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Palco 4:</span>
+                    <span className={comparisonResults.palco4Cost - results.palco4Cost <= 0 ? "text-green-600" : "text-red-600"}>
+                      ${(comparisonResults.palco4Cost - results.palco4Cost).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Line:</span>
+                    <span className={comparisonResults.lineCost - results.lineCost <= 0 ? "text-green-600" : "text-red-600"}>
+                      ${(comparisonResults.lineCost - results.lineCost).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="mt-8 space-y-8">
@@ -274,7 +453,7 @@ export function QuotationResults({ results }: QuotationResultsProps) {
                         <span className="font-medium">${results.palco4Cost.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between items-center">
-                        <span>Costo de Línea:</span>
+                        <span>Line:</span>
                         <span className="font-medium">${results.lineCost.toFixed(2)}</span>
                       </div>
                     </div>
@@ -344,6 +523,19 @@ export function QuotationResults({ results }: QuotationResultsProps) {
           </Tabs>
         </CardContent>
       </Card>
+
+      {/* Render comparison if it exists */}
+      {comparisonResults && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Comparación de Cotizaciones</CardTitle>
+            <CardDescription>Análisis comparativo entre cotizaciones</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {renderComparison()}
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
