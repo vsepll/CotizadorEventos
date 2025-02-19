@@ -28,7 +28,8 @@ import {
   FileDown,
   Plus,
   ArrowUpDown,
-  Loader2
+  Loader2,
+  ArrowLeft
 } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
@@ -204,7 +205,15 @@ export function QuotationList() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-bold tracking-tight">Cotizaciones</h2>
+        <div className="flex items-center space-x-4">
+          <Button variant="outline" asChild>
+            <Link href="/dashboard" className="flex items-center space-x-2">
+              <ArrowLeft className="h-4 w-4" />
+              <span>Volver al Dashboard</span>
+            </Link>
+          </Button>
+          <h2 className="text-3xl font-bold tracking-tight">Cotizaciones</h2>
+        </div>
         <Button asChild>
           <Link href="/quotation" className="flex items-center space-x-2">
             <Plus className="h-4 w-4" />

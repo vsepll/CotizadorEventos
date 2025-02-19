@@ -195,26 +195,32 @@ export function QuotationDetails({ id }: QuotationDetailsProps) {
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="space-y-1">
-          <h2 className="text-3xl font-bold tracking-tight">{quotation.name}</h2>
-          <div className="flex flex-wrap gap-4 text-muted-foreground">
-            <div className="flex items-center space-x-2">
-              <Calendar className="h-4 w-4" />
-              <span>
-                {new Date(quotation.createdAt).toLocaleDateString('es-ES', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
-                })}
-              </span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <DollarSign className="h-4 w-4" />
-              <span>${(quotation.totalAmount || 0).toLocaleString()}</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Users className="h-4 w-4" />
-              <span>{(quotation.ticketQuantity || 0).toLocaleString()} tickets</span>
+        <div className="flex items-center space-x-4">
+          <Button variant="outline" onClick={() => router.push('/dashboard')} className="flex items-center space-x-2">
+            <ArrowLeft className="h-4 w-4" />
+            <span>Volver al Dashboard</span>
+          </Button>
+          <div className="space-y-1">
+            <h2 className="text-3xl font-bold tracking-tight">{quotation.name}</h2>
+            <div className="flex flex-wrap gap-4 text-muted-foreground">
+              <div className="flex items-center space-x-2">
+                <Calendar className="h-4 w-4" />
+                <span>
+                  {new Date(quotation.createdAt).toLocaleDateString('es-ES', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                  })}
+                </span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <DollarSign className="h-4 w-4" />
+                <span>${(quotation.totalAmount || 0).toLocaleString()}</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Users className="h-4 w-4" />
+                <span>{(quotation.ticketQuantity || 0).toLocaleString()} tickets</span>
+              </div>
             </div>
           </div>
         </div>
