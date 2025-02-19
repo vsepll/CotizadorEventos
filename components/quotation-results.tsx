@@ -1,7 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
-import { Bar, BarChart, Line, LineChart, Pie, PieChart, XAxis, YAxis } from "recharts"
+import { Bar, BarChart, Line, LineChart, Pie, PieChart, XAxis, YAxis, Cell, Tooltip } from "recharts"
 import { ArrowDown, ArrowUp, DollarSign, Percent, Activity, CreditCard, Building, Users, LucideIcon } from "lucide-react"
 
 interface QuotationResultsProps {
@@ -84,23 +83,82 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
     return null
   }
 
+  const COLOR_PALETTE = {
+    revenue: {
+      platform: "#3B82F6",      // Blue for platform fees
+      ticketing: "#10B981",     // Green for ticketing fees
+      additional: "#8B5CF6",    // Purple for additional services
+    },
+    costs: {
+      payway: "#F43F5E",        // Red for payment fees
+      palco4: "#F59E0B",        // Amber for Palco 4 costs
+      line: "#6366F1",          // Indigo for line costs
+      operational: "#14B8A6",   // Teal for operational costs
+    },
+    profitability: {
+      revenue: "#10B981",       // Green for revenue
+      costs: "#F43F5E",         // Red for costs
+      margin: "#8B5CF6",        // Purple for gross margin
+    }
+  }
+
   const revenueData = [
-    { name: "Comisión de Plataforma", value: results.platformFee },
-    { name: "Comisión de Ticketing", value: results.ticketingFee },
-    { name: "Servicios Adicionales", value: results.additionalServices },
+    { 
+      name: "Comisión de Plataforma", 
+      value: results.platformFee,
+      color: COLOR_PALETTE.revenue.platform 
+    },
+    { 
+      name: "Comisión de Ticketing", 
+      value: results.ticketingFee,
+      color: COLOR_PALETTE.revenue.ticketing 
+    },
+    { 
+      name: "Servicios Adicionales", 
+      value: results.additionalServices,
+      color: COLOR_PALETTE.revenue.additional 
+    },
   ]
 
   const costsData = [
-    { name: "Comisiones de Pago", value: results.paywayFees.total },
-    { name: "Palco 4", value: results.palco4Cost },
-    { name: "Line", value: results.lineCost },
-    { name: "Costos Operativos", value: results.operationalCosts.total },
+    { 
+      name: "Comisiones de Pago", 
+      value: results.paywayFees.total,
+      color: COLOR_PALETTE.costs.payway 
+    },
+    { 
+      name: "Palco 4", 
+      value: results.palco4Cost,
+      color: COLOR_PALETTE.costs.palco4 
+    },
+    { 
+      name: "Line", 
+      value: results.lineCost,
+      color: COLOR_PALETTE.costs.line 
+    },
+    { 
+      name: "Costos Operativos", 
+      value: results.operationalCosts.total,
+      color: COLOR_PALETTE.costs.operational 
+    },
   ]
 
   const profitabilityData = [
-    { name: "Ingresos", value: results.totalRevenue },
-    { name: "Costos", value: results.totalCosts },
-    { name: "Margen Bruto", value: results.grossMargin },
+    { 
+      name: "Ingresos", 
+      value: results.totalRevenue,
+      color: COLOR_PALETTE.profitability.revenue 
+    },
+    { 
+      name: "Costos", 
+      value: results.totalCosts,
+      color: COLOR_PALETTE.profitability.costs 
+    },
+    { 
+      name: "Margen Bruto", 
+      value: results.grossMargin,
+      color: COLOR_PALETTE.profitability.margin 
+    },
   ]
 
   const getPercentageDifference = (value1: number, value2: number) => {
@@ -305,6 +363,61 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
     )
   }
 
+  // Update PieChart rendering to use custom colors
+  const CustomPieChart = ({ data, title }: { data: any[], title: string }) => (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="flex justify-center items-center">
+        <PieChart width={300} height={300}>
+          <Pie
+            data={data}
+            cx="50%"
+            cy="50%"
+            labelLine={false}
+            outerRadius={80}
+            fill="#8884d8"
+            dataKey="value"
+            nameKey="name"
+          >
+            {data.map((entry, index) => (
+              <Cell key={`cell-${index}`} fill={entry.color} />
+            ))}
+          </Pie>
+          <Tooltip 
+            formatter={(value) => [`$${Number(value).toFixed(2)}`, "Valor"]}
+            labelFormatter={(name) => name}
+          />
+        </PieChart>
+      </CardContent>
+    </Card>
+  )
+
+  // Update BarChart rendering to use custom colors
+  const CustomBarChart = ({ data, title }: { data: any[], title: string }) => (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <BarChart width={400} height={300} data={data}>
+          <XAxis dataKey="name" />
+          <YAxis />
+          <Tooltip 
+            formatter={(value) => [`$${Number(value).toFixed(2)}`, "Valor"]}
+            labelFormatter={(name) => name}
+          />
+          <Bar dataKey="value" fill="#8884d8">
+            {data.map((entry, index) => (
+              <Cell key={`cell-${index}`} fill={entry.color} />
+            ))}
+          </Bar>
+        </BarChart>
+      </CardContent>
+    </Card>
+  )
+
   return (
     <div className="mt-8 space-y-8">
       <Card className="bg-white dark:bg-gray-800">
@@ -400,215 +513,48 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
             </TabsContent>
 
             <TabsContent value="revenue" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Revenue Breakdown</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ChartContainer
-                    config={{
-                      platformFee: { label: "Platform Fee", color: "hsl(var(--chart-1))" },
-                      ticketingFee: { label: "Ticketing Fee", color: "hsl(var(--chart-2))" },
-                      additionalServices: { label: "Additional Services", color: "hsl(var(--chart-3))" },
-                    }}
-                    className="h-80"
-                  >
-                    <PieChart>
-                      <Pie
-                        data={revenueData}
-                        dataKey="value"
-                        nameKey="name"
-                        cx="50%"
-                        cy="50%"
-                        outerRadius={80}
-                        fill="var(--color-platformFee)"
-                        label
-                      />
-                      <ChartTooltip content={<ChartTooltipContent />} />
-                    </PieChart>
-                  </ChartContainer>
-                </CardContent>
-              </Card>
+              <CustomPieChart data={revenueData} title="Desglose de Ingresos" />
               <div className="grid grid-cols-3 gap-4">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Platform Fee</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">${results.platformFee.toFixed(2)}</div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Ticketing Fee</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">${results.ticketingFee.toFixed(2)}</div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Additional Services</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">${results.additionalServices.toFixed(2)}</div>
-                  </CardContent>
-                </Card>
+                {revenueData.map((item, index) => (
+                  <Card key={index} style={{ borderLeftColor: item.color, borderLeftWidth: '4px' }}>
+                    <CardContent className="pt-4 flex justify-between items-center">
+                      <div>
+                        <p className="text-sm text-muted-foreground">{item.name}</p>
+                        <p className="text-lg font-bold">${item.value.toFixed(2)}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
             </TabsContent>
             <TabsContent value="costs" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Costs Breakdown</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ChartContainer
-                    config={{
-                      paywayFees: { label: "Payway Fees", color: "hsl(var(--chart-1))" },
-                      palco4: { label: "Palco 4", color: "hsl(var(--chart-2))" },
-                      lineCost: { label: "Line Cost", color: "hsl(var(--chart-3))" },
-                      operationalCosts: { label: "Operational Costs", color: "hsl(var(--chart-4))" },
-                    }}
-                    className="h-80"
-                  >
-                    <BarChart data={costsData}>
-                      <XAxis dataKey="name" />
-                      <YAxis />
-                      <ChartTooltip content={<ChartTooltipContent />} />
-                      <Bar dataKey="value" fill="var(--color-paywayFees)" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ChartContainer>
-                </CardContent>
-              </Card>
+              <CustomBarChart data={costsData} title="Desglose de Costos" />
               <div className="grid grid-cols-2 gap-4">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Comisiones de Medios de Pago</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold mb-2">${results.paywayFees.total.toFixed(2)}</div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span>Tarjeta de Crédito:</span>
-                        <span className="font-medium">${results.paywayFees.credit.toFixed(2)}</span>
+                {costsData.map((item, index) => (
+                  <Card key={index} style={{ borderLeftColor: item.color, borderLeftWidth: '4px' }}>
+                    <CardContent className="pt-4 flex justify-between items-center">
+                      <div>
+                        <p className="text-sm text-muted-foreground">{item.name}</p>
+                        <p className="text-lg font-bold">${item.value.toFixed(2)}</p>
                       </div>
-                      <div className="flex justify-between items-center">
-                        <span>Tarjeta de Débito:</span>
-                        <span className="font-medium">${results.paywayFees.debit.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span>Efectivo:</span>
-                        <span className="font-medium">${results.paywayFees.cash.toFixed(2)}</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Costos Operativos</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold mb-2">${results.operationalCosts.total.toFixed(2)}</div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span>Credenciales:</span>
-                        <span className="font-medium">${results.operationalCosts.credentials.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span>Ticketing:</span>
-                        <span className="font-medium">${results.operationalCosts.ticketing.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span>Supervisores:</span>
-                        <span className="font-medium">${results.operationalCosts.supervisors.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span>Operadores:</span>
-                        <span className="font-medium">${results.operationalCosts.operators.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span>Movilidad:</span>
-                        <span className="font-medium">${results.operationalCosts.mobility.toFixed(2)}</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Costos Adicionales</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span>Palco 4:</span>
-                        <span className="font-medium">${results.palco4Cost.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span>Line:</span>
-                        <span className="font-medium">${results.lineCost.toFixed(2)}</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Información de Tickets</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span>Cantidad de Tickets:</span>
-                        <span className="font-medium">{results.ticketQuantity}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span>Costo por Ticket:</span>
-                        <span className="font-medium">${(results.operationalCosts.ticketing / results.ticketQuantity).toFixed(2)}</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
             </TabsContent>
             <TabsContent value="profitability" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Profitability Analysis</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ChartContainer
-                    config={{
-                      revenue: { label: "Revenue", color: "hsl(var(--chart-1))" },
-                      costs: { label: "Costs", color: "hsl(var(--chart-2))" },
-                      margin: { label: "Gross Margin", color: "hsl(var(--chart-3))" },
-                    }}
-                    className="h-80"
-                  >
-                    <LineChart data={profitabilityData}>
-                      <XAxis dataKey="name" />
-                      <YAxis />
-                      <ChartTooltip content={<ChartTooltipContent />} />
-                      <Line type="monotone" dataKey="value" stroke="var(--color-revenue)" strokeWidth={2} />
-                    </LineChart>
-                  </ChartContainer>
-                </CardContent>
-              </Card>
-              <div className="grid grid-cols-2 gap-4">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Gross Margin</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">${results.grossMargin.toFixed(2)}</div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Gross Profitability</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{results.grossProfitability.toFixed(2)}%</div>
-                  </CardContent>
-                </Card>
+              <CustomPieChart data={profitabilityData} title="Análisis de Rentabilidad" />
+              <div className="grid grid-cols-3 gap-4">
+                {profitabilityData.map((item, index) => (
+                  <Card key={index} style={{ borderLeftColor: item.color, borderLeftWidth: '4px' }}>
+                    <CardContent className="pt-4 flex justify-between items-center">
+                      <div>
+                        <p className="text-sm text-muted-foreground">{item.name}</p>
+                        <p className="text-lg font-bold">${item.value.toFixed(2)}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
             </TabsContent>
           </Tabs>
