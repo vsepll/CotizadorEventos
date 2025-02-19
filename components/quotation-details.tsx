@@ -6,8 +6,10 @@ import { QuotationResults as QuotationResultsComponent } from "@/components/quot
 import type { QuotationResults } from "@/lib/calculations"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { generateQuotationPDF } from "@/lib/pdf-generator"
-import { FileDown } from "lucide-react"
+import { ArrowLeft, FileDown, Calendar, DollarSign, Users, Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 
 interface QuotationData extends QuotationResults {
@@ -29,6 +31,7 @@ export function QuotationDetails({ id }: QuotationDetailsProps) {
   const [comparisonQuotation, setComparisonQuotation] = useState<QuotationData | null>(null)
   const [availableQuotations, setAvailableQuotations] = useState<QuotationData[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isExporting, setIsExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
   const router = useRouter()
@@ -36,48 +39,45 @@ export function QuotationDetails({ id }: QuotationDetailsProps) {
   useEffect(() => {
     const fetchQuotation = async () => {
       try {
-        console.log('Fetching quotation with ID:', id)
         const response = await fetch(`/api/quotations/${id}`, {
           credentials: 'include'
         })
         
         if (!response.ok) {
           const errorData = await response.json()
-          console.error('Error response:', errorData)
           
           if (response.status === 404) {
-            setError('Quotation not found. It may have been deleted.')
+            setError('No se encontró la cotización. Es posible que haya sido eliminada.')
             toast({
               title: "Error",
-              description: "Quotation not found. It may have been deleted.",
+              description: "No se encontró la cotización. Es posible que haya sido eliminada.",
               variant: "destructive",
             })
             return
           }
           
           if (response.status === 401) {
-            setError('You are not authorized to view this quotation.')
+            setError('No tienes autorización para ver esta cotización.')
             toast({
               title: "Error",
-              description: "You are not authorized to view this quotation.",
+              description: "No tienes autorización para ver esta cotización.",
               variant: "destructive",
             })
             router.push('/quotations')
             return
           }
           
-          throw new Error(errorData.error || "Failed to fetch quotation")
+          throw new Error(errorData.error || "Error al cargar la cotización")
         }
 
         const data = await response.json()
-        console.log('Received quotation data:', data)
         setQuotation(data)
       } catch (error) {
-        console.error("Error fetching quotation:", error)
-        setError('Failed to load quotation details. Please try again.')
+        console.error("Error al cargar la cotización:", error)
+        setError('Error al cargar los detalles de la cotización. Por favor, intente nuevamente.')
         toast({
           title: "Error",
-          description: "Failed to load quotation details. Please try again.",
+          description: "Error al cargar los detalles de la cotización. Por favor, intente nuevamente.",
           variant: "destructive",
         })
       } finally {
@@ -91,12 +91,12 @@ export function QuotationDetails({ id }: QuotationDetailsProps) {
           credentials: 'include'
         })
         if (!response.ok) {
-          throw new Error("Failed to fetch quotations")
+          throw new Error("Error al cargar las cotizaciones disponibles")
         }
         const data = await response.json()
         setAvailableQuotations(data.filter((q: QuotationData) => q.id !== id))
       } catch (error) {
-        console.error("Error fetching available quotations:", error)
+        console.error("Error al cargar las cotizaciones disponibles:", error)
       }
     }
 
@@ -110,50 +110,71 @@ export function QuotationDetails({ id }: QuotationDetailsProps) {
         credentials: 'include'
       })
       if (!response.ok) {
-        throw new Error("Failed to fetch comparison quotation")
+        throw new Error("Error al cargar la cotización para comparar")
       }
       const data = await response.json()
       setComparisonQuotation(data)
     } catch (error) {
-      console.error("Error fetching comparison quotation:", error)
+      console.error("Error al cargar la cotización para comparar:", error)
       toast({
         title: "Error",
-        description: "Failed to load comparison quotation. Please try again.",
+        description: "Error al cargar la cotización para comparar. Por favor, intente nuevamente.",
         variant: "destructive",
       })
     }
   }
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     if (!quotation) return
 
+    setIsExporting(true)
     try {
       const doc = generateQuotationPDF(quotation)
       doc.save(`cotizacion-${quotation.name.toLowerCase().replace(/\s+/g, '-')}.pdf`)
       toast({
-        title: "Success",
-        description: "PDF exported successfully",
+        title: "Éxito",
+        description: "PDF exportado correctamente",
       })
     } catch (error) {
-      console.error("Error exporting PDF:", error)
+      console.error("Error al exportar PDF:", error)
       toast({
         title: "Error",
-        description: "Failed to export PDF. Please try again.",
+        description: "Error al exportar el PDF. Por favor, intente nuevamente.",
         variant: "destructive",
       })
+    } finally {
+      setIsExporting(false)
     }
   }
 
   if (isLoading) {
-    return <div>Loading...</div>
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-8 w-[200px]" />
+          <Skeleton className="h-10 w-[120px]" />
+        </div>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-[150px]" />
+            <Skeleton className="h-4 w-[200px]" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Skeleton className="h-[200px] w-full" />
+            <Skeleton className="h-[150px] w-full" />
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   if (error) {
     return (
-      <div className="text-center py-8">
-        <p className="text-red-500 mb-4">{error}</p>
-        <Button onClick={() => router.push('/quotations')}>
-          Return to Quotations
+      <div className="flex flex-col items-center justify-center py-8 space-y-4">
+        <p className="text-red-500 text-center">{error}</p>
+        <Button onClick={() => router.push('/quotations')} variant="outline" className="flex items-center space-x-2">
+          <ArrowLeft className="h-4 w-4" />
+          <span>Volver a Cotizaciones</span>
         </Button>
       </div>
     )
@@ -161,10 +182,11 @@ export function QuotationDetails({ id }: QuotationDetailsProps) {
 
   if (!quotation) {
     return (
-      <div className="text-center py-8">
-        <p className="text-gray-500 mb-4">Quotation not found</p>
-        <Button onClick={() => router.push('/quotations')}>
-          Return to Quotations
+      <div className="flex flex-col items-center justify-center py-8 space-y-4">
+        <p className="text-muted-foreground text-center">No se encontró la cotización</p>
+        <Button onClick={() => router.push('/quotations')} variant="outline" className="flex items-center space-x-2">
+          <ArrowLeft className="h-4 w-4" />
+          <span>Volver a Cotizaciones</span>
         </Button>
       </div>
     )
@@ -172,41 +194,113 @@ export function QuotationDetails({ id }: QuotationDetailsProps) {
 
   return (
     <div className="space-y-8">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-xl font-semibold mb-2">{quotation.name}</h2>
-          <p>Event Type: {quotation.eventType}</p>
-          <p>Total Amount: ${quotation.totalAmount.toFixed(2)}</p>
-          <p>Created: {new Date(quotation.createdAt).toLocaleDateString()}</p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="space-y-1">
+          <h2 className="text-3xl font-bold tracking-tight">{quotation.name}</h2>
+          <div className="flex flex-wrap gap-4 text-muted-foreground">
+            <div className="flex items-center space-x-2">
+              <Calendar className="h-4 w-4" />
+              <span>
+                {new Date(quotation.createdAt).toLocaleDateString('es-ES', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                })}
+              </span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <DollarSign className="h-4 w-4" />
+              <span>${(quotation.totalAmount || 0).toLocaleString()}</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Users className="h-4 w-4" />
+              <span>{(quotation.ticketQuantity || 0).toLocaleString()} tickets</span>
+            </div>
+          </div>
         </div>
-        <Button onClick={handleExportPDF} className="flex items-center gap-2">
-          <FileDown className="h-4 w-4" />
-          Export PDF
-        </Button>
+        <div className="flex gap-2 w-full sm:w-auto">
+          <Button onClick={() => router.push('/quotations')} variant="outline" className="flex-1 sm:flex-none">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Volver
+          </Button>
+          <Button 
+            onClick={handleExportPDF} 
+            className="flex-1 sm:flex-none"
+            disabled={isExporting}
+          >
+            {isExporting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <>
+                <FileDown className="h-4 w-4 mr-2" />
+                Exportar PDF
+              </>
+            )}
+          </Button>
+        </div>
       </div>
-      <QuotationResultsComponent results={quotation} comparisonResults={comparisonQuotation} />
-      <div>
-        <h3 className="text-lg font-semibold mb-2">Compare with another quotation</h3>
-        <div className="flex items-center space-x-4">
+
+      {quotation && (
+        <QuotationResultsComponent 
+          results={{
+            ticketQuantity: quotation.ticketQuantity,
+            platformFee: quotation.platformFee,
+            ticketingFee: quotation.ticketingFee,
+            additionalServices: quotation.additionalServices,
+            paywayFees: quotation.paywayFees,
+            palco4Cost: quotation.palco4Cost,
+            lineCost: quotation.lineCost,
+            operationalCosts: quotation.operationalCosts,
+            totalRevenue: quotation.totalRevenue,
+            totalCosts: quotation.totalCosts,
+            grossMargin: quotation.grossMargin,
+            grossProfitability: quotation.grossProfitability
+          }} 
+          comparisonResults={comparisonQuotation ? {
+            ticketQuantity: comparisonQuotation.ticketQuantity,
+            platformFee: comparisonQuotation.platformFee,
+            ticketingFee: comparisonQuotation.ticketingFee,
+            additionalServices: comparisonQuotation.additionalServices,
+            paywayFees: comparisonQuotation.paywayFees,
+            palco4Cost: comparisonQuotation.palco4Cost,
+            lineCost: comparisonQuotation.lineCost,
+            operationalCosts: comparisonQuotation.operationalCosts,
+            totalRevenue: comparisonQuotation.totalRevenue,
+            totalCosts: comparisonQuotation.totalCosts,
+            grossMargin: comparisonQuotation.grossMargin,
+            grossProfitability: comparisonQuotation.grossProfitability
+          } : undefined}
+        />
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Comparar con otra cotización</CardTitle>
+          <CardDescription>Selecciona otra cotización para comparar los resultados</CardDescription>
+        </CardHeader>
+        <CardContent className="flex items-center space-x-4">
           <Select onValueChange={handleComparisonChange}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Select a quotation" />
+            <SelectTrigger className="w-[300px]">
+              <SelectValue placeholder="Seleccionar cotización" />
             </SelectTrigger>
             <SelectContent>
               {availableQuotations.map((q) => (
                 <SelectItem key={q.id} value={q.id}>
-                  {q.name}
+                  {q.name} - ${q.totalAmount.toLocaleString()}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
           {comparisonQuotation && (
-            <Button variant="outline" onClick={() => setComparisonQuotation(null)}>
-              Clear Comparison
+            <Button 
+              variant="outline" 
+              onClick={() => setComparisonQuotation(null)}
+            >
+              Limpiar Comparación
             </Button>
           )}
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

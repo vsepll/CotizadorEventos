@@ -2,6 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { Bar, BarChart, Line, LineChart, Pie, PieChart, XAxis, YAxis } from "recharts"
+import { ArrowDown, ArrowUp, DollarSign, Percent, Activity, CreditCard, Building, Users, LucideIcon } from "lucide-react"
 
 interface QuotationResultsProps {
   results: {
@@ -58,6 +59,26 @@ interface QuotationResultsProps {
   }
 }
 
+interface StatCardProps {
+  title: string;
+  value: number;
+  trend?: number;
+  prefix?: string;
+  suffix?: string;
+  icon?: LucideIcon;
+}
+
+interface DetailCardItem {
+  label: string;
+  value: number;
+}
+
+interface DetailCardProps {
+  title: string;
+  items: DetailCardItem[];
+  icon: LucideIcon;
+}
+
 export function QuotationResults({ results, comparisonResults }: QuotationResultsProps) {
   if (!results) {
     return null
@@ -86,6 +107,55 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
     if (value1 === 0) return 0
     return ((value2 - value1) / value1) * 100
   }
+
+  const StatCard = ({ title, value, trend = 0, prefix = "$", suffix = "", icon: Icon }: StatCardProps) => (
+    <Card className="overflow-hidden transition-all hover:shadow-lg">
+      <CardHeader className="pb-2">
+        <div className="flex items-center space-x-2">
+          {Icon && <Icon className="w-4 h-4 text-muted-foreground" />}
+          <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <p className="text-2xl font-bold">
+              {prefix}{typeof value === 'number' ? value.toFixed(2) : '0.00'}{suffix}
+            </p>
+            {trend !== 0 && (
+              <p className={`text-sm flex items-center ${trend > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {trend > 0 ? <ArrowUp className="w-4 h-4 mr-1" /> : <ArrowDown className="w-4 h-4 mr-1" />}
+                {Math.abs(trend)}%
+              </p>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+
+  const DetailCard = ({ title, items, icon: Icon }: DetailCardProps) => (
+    <Card className="overflow-hidden transition-all hover:shadow-lg">
+      <CardHeader className="pb-2">
+        <div className="flex items-center space-x-2">
+          <Icon className="w-4 h-4 text-muted-foreground" />
+          <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-2">
+          {items.map((item, index) => (
+            <div key={index} className="flex justify-between items-center py-1 border-b last:border-0">
+              <span className="text-sm text-muted-foreground">{item.label}</span>
+              <span className="font-medium">
+                ${typeof item.value === 'number' ? item.value.toFixed(2) : '0.00'}
+              </span>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
 
   const renderComparison = () => {
     if (!comparisonResults) return null
@@ -237,77 +307,98 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
 
   return (
     <div className="mt-8 space-y-8">
-      <Card>
+      <Card className="bg-white dark:bg-gray-800">
         <CardHeader>
-          <CardTitle>Quotation Results</CardTitle>
-          <CardDescription>Overview of the financial breakdown for the event</CardDescription>
+          <CardTitle className="text-xl font-bold">Análisis Financiero del Evento</CardTitle>
+          <CardDescription>Desglose detallado de ingresos, costos y rentabilidad</CardDescription>
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="summary" className="space-y-4">
-            <TabsList>
-              <TabsTrigger value="summary">Resumen</TabsTrigger>
-              <TabsTrigger value="revenue">Ingresos</TabsTrigger>
-              <TabsTrigger value="costs">Costos</TabsTrigger>
-              <TabsTrigger value="profitability">Rentabilidad</TabsTrigger>
+            <TabsList className="grid grid-cols-4 gap-4 p-1 bg-muted rounded-lg">
+              <TabsTrigger value="summary" className="font-medium">
+                Resumen
+              </TabsTrigger>
+              <TabsTrigger value="revenue" className="font-medium">
+                Ingresos
+              </TabsTrigger>
+              <TabsTrigger value="costs" className="font-medium">
+                Costos
+              </TabsTrigger>
+              <TabsTrigger value="profitability" className="font-medium">
+                Rentabilidad
+              </TabsTrigger>
             </TabsList>
-            <TabsContent value="summary" className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">${results.totalRevenue.toFixed(2)}</div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Total Costs</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">${results.totalCosts.toFixed(2)}</div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Gross Margin</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">${results.grossMargin.toFixed(2)}</div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Gross Profitability</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{results.grossProfitability.toFixed(2)}%</div>
-                  </CardContent>
-                </Card>
+
+            <TabsContent value="summary" className="space-y-6">
+              <div className="grid grid-cols-4 gap-4">
+                <StatCard
+                  title="Ingresos Totales"
+                  value={results.totalRevenue}
+                  icon={DollarSign}
+                />
+                <StatCard
+                  title="Costos Totales"
+                  value={results.totalCosts}
+                  icon={DollarSign}
+                />
+                <StatCard
+                  title="Margen Bruto"
+                  value={results.grossMargin}
+                  icon={DollarSign}
+                />
+                <StatCard
+                  title="Rentabilidad"
+                  value={results.grossProfitability}
+                  prefix=""
+                  suffix="%"
+                  icon={Percent}
+                />
               </div>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Financial Overview</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ChartContainer
-                    config={{
-                      revenue: { label: "Revenue", color: "hsl(var(--chart-1))" },
-                      costs: { label: "Costs", color: "hsl(var(--chart-2))" },
-                      margin: { label: "Gross Margin", color: "hsl(var(--chart-3))" },
-                    }}
-                    className="h-80"
-                  >
-                    <BarChart data={profitabilityData}>
-                      <XAxis dataKey="name" />
-                      <YAxis />
-                      <ChartTooltip content={<ChartTooltipContent />} />
-                      <Bar dataKey="value" fill="var(--color-revenue)" name="Amount" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ChartContainer>
-                </CardContent>
-              </Card>
+
+              <div className="grid grid-cols-2 gap-6">
+                <DetailCard
+                  title="Comisiones de Medios de Pago"
+                  icon={CreditCard}
+                  items={[
+                    { label: "Tarjeta de Crédito", value: results.paywayFees.credit },
+                    { label: "Tarjeta de Débito", value: results.paywayFees.debit },
+                    { label: "Efectivo", value: results.paywayFees.cash },
+                    { label: "Total Comisiones", value: results.paywayFees.total },
+                  ]}
+                />
+                <DetailCard
+                  title="Costos Operativos"
+                  icon={Building}
+                  items={[
+                    { label: "Credenciales", value: results.operationalCosts.credentials },
+                    { label: "Ticketing", value: results.operationalCosts.ticketing },
+                    { label: "Supervisores", value: results.operationalCosts.supervisors },
+                    { label: "Operadores", value: results.operationalCosts.operators },
+                    { label: "Movilidad", value: results.operationalCosts.mobility },
+                  ]}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-6">
+                <DetailCard
+                  title="Costos Adicionales"
+                  icon={Activity}
+                  items={[
+                    { label: "Palco 4", value: results.palco4Cost },
+                    { label: "Line", value: results.lineCost },
+                  ]}
+                />
+                <DetailCard
+                  title="Información de Tickets"
+                  icon={Users}
+                  items={[
+                    { label: "Cantidad de Tickets", value: results.ticketQuantity },
+                    { label: "Costo por Ticket", value: results.operationalCosts.ticketing / results.ticketQuantity },
+                  ]}
+                />
+              </div>
             </TabsContent>
+
             <TabsContent value="revenue" className="space-y-4">
               <Card>
                 <CardHeader>
@@ -526,10 +617,10 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
 
       {/* Render comparison if it exists */}
       {comparisonResults && (
-        <Card>
+        <Card className="bg-white dark:bg-gray-800">
           <CardHeader>
-            <CardTitle>Comparación de Cotizaciones</CardTitle>
-            <CardDescription>Análisis comparativo entre cotizaciones</CardDescription>
+            <CardTitle className="text-xl font-bold">Análisis Comparativo</CardTitle>
+            <CardDescription>Comparación detallada entre cotizaciones</CardDescription>
           </CardHeader>
           <CardContent>
             {renderComparison()}
