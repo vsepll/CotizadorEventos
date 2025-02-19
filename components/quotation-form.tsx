@@ -26,6 +26,7 @@ import { InfoIcon, Calculator, Save, Building2, CreditCard, Users, Percent } fro
 import { Loader2 } from "lucide-react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 
 interface TooltipLabelProps {
   htmlFor: string;
@@ -35,8 +36,8 @@ interface TooltipLabelProps {
 }
 
 export function QuotationForm() {
-  const { toast } = useToast()
   const { data: session } = useSession()
+  const { toast } = useToast()
   const router = useRouter()
   const [formData, setFormData] = useState({
     eventType: "",
@@ -239,6 +240,18 @@ export function QuotationForm() {
       formData.supervisorsCost &&
       formData.operatorsCost &&
       formData.mobilityCost
+    )
+  }
+
+  // If no session, return null or a login prompt
+  if (!session) {
+    return (
+      <div className="text-center py-8">
+        <p>Debes iniciar sesión para crear una cotización</p>
+        <Button asChild className="mt-4">
+          <Link href="/login">Iniciar Sesión</Link>
+        </Button>
+      </div>
     )
   }
 
