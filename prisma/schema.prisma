@@ -16,6 +16,7 @@ model User {
   updatedAt  DateTime    @default(now()) @updatedAt
   role       UserRole    @default(USER)
   quotations Quotation[]
+  customOperationalCosts CustomOperationalCost[]
 }
 
 model GlobalParameters {
@@ -58,6 +59,7 @@ model Quotation {
   userId             String
   user               User           @relation(fields: [userId], references: [id])
   ticketSectors      TicketSector[]
+  customCosts        QuotationCustomCost[]
 }
 
 model TicketVariation {
@@ -92,6 +94,26 @@ model GlobalFixedExpense {
   amount    Float
   isDefault Boolean  @default(false)
   createdAt DateTime @default(now())
+}
+
+model CustomOperationalCost {
+  id          String   @id @default(cuid())
+  name        String   // Nombre del concepto
+  description String?  // Descripción opcional
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  userId      String   // ID del usuario que creó el concepto
+  user        User     @relation(fields: [userId], references: [id])
+  quotationCosts QuotationCustomCost[] // Relación con los costos específicos de cada cotización
+}
+
+model QuotationCustomCost {
+  id                      String   @id @default(cuid())
+  amount                  Float    // Monto del costo
+  quotationId            String
+  customOperationalCostId String
+  quotation              Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  customOperationalCost   CustomOperationalCost @relation(fields: [customOperationalCostId], references: [id])
 }
 
 enum UserRole {

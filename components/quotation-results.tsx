@@ -24,6 +24,7 @@ interface QuotationResultsProps {
       operators: number
       mobility: number
       total: number
+      custom?: { name: string; amount: number }[]
     }
     totalRevenue: number
     totalCosts: number
@@ -468,7 +469,10 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
               </div>
 
               {/* Solo mostrar la sección de costos operativos si hay algún costo */}
-              {Object.values(results.operationalCosts).some(cost => cost > 0) && (
+              {Object.values(results.operationalCosts).some(cost => 
+                (typeof cost === 'number' && cost > 0) || 
+                (Array.isArray(cost) && cost.length > 0)
+              ) && (
                 <div className="grid grid-cols-1 gap-6">
                   <DetailCard
                     title="Costos Operativos"
@@ -479,6 +483,10 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
                       ...(results.operationalCosts.supervisors > 0 ? [{ label: "Supervisores", value: results.operationalCosts.supervisors }] : []),
                       ...(results.operationalCosts.operators > 0 ? [{ label: "Operadores", value: results.operationalCosts.operators }] : []),
                       ...(results.operationalCosts.mobility > 0 ? [{ label: "Movilidad", value: results.operationalCosts.mobility }] : []),
+                      ...(results.operationalCosts.custom?.map(cost => ({
+                        label: cost.name,
+                        value: cost.amount
+                      })) || []),
                       { label: "Total Operativo", value: results.operationalCosts.total },
                     ].filter(item => item.value > 0)}
                   />

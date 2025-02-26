@@ -34,6 +34,11 @@ const QuotationInputSchema = z.object({
   supervisorsCost: z.number().nonnegative().optional(),
   operatorsCost: z.number().nonnegative().optional(),
   mobilityCost: z.number().nonnegative().optional(),
+  customOperationalCosts: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    amount: z.number().nonnegative()
+  })).optional().default([])
 })
 
 type QuotationInput = z.infer<typeof QuotationInputSchema>
@@ -50,6 +55,7 @@ function calculateQuotation(input: QuotationInput, globalParameters: any) {
     supervisorsCost = globalParameters.defaultSupervisorsCost,
     operatorsCost = globalParameters.defaultOperatorsCost,
     mobilityCost = globalParameters.defaultMobilityCost,
+    customOperationalCosts = []
   } = input
 
   // Calculate total value
@@ -86,6 +92,9 @@ function calculateQuotation(input: QuotationInput, globalParameters: any) {
   // Calculate Line cost (only if not using Palco4)
   const lineCost = platform.name === "PALCO4" ? 0 : totalValue * (globalParameters.lineCostPercentage / 100)
 
+  // Calculate custom operational costs total
+  const customOperationalCostsTotal = customOperationalCosts.reduce((sum, cost) => sum + Number(cost.amount), 0)
+
   // Calculate operational costs
   const operationalCosts = {
     credentials: Number(credentialsCost) || 0,
@@ -93,14 +102,18 @@ function calculateQuotation(input: QuotationInput, globalParameters: any) {
     supervisors: Number(supervisorsCost) || 0,
     operators: Number(operatorsCost) || 0,
     mobility: Number(mobilityCost) || 0,
+    custom: customOperationalCosts,
     total: 0
   }
+
+  // Calculate total operational costs including custom costs
   operationalCosts.total = 
     operationalCosts.credentials +
     operationalCosts.ticketing +
     operationalCosts.supervisors +
     operationalCosts.operators +
-    operationalCosts.mobility
+    operationalCosts.mobility +
+    customOperationalCostsTotal
 
   // Format payment fees for response
   const paywayFees = {
@@ -128,6 +141,7 @@ function calculateQuotation(input: QuotationInput, globalParameters: any) {
     platformFee,
     lineCost,
     operationalCosts,
+    customOperationalCostsTotal,
     paywayFees,
     totalRevenue,
     totalCosts,

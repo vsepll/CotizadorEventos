@@ -27,6 +27,7 @@ import { Loader2 } from "lucide-react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { CustomOperationalCosts } from "@/components/custom-operational-costs"
 
 interface TooltipLabelProps {
   htmlFor: string;
@@ -63,6 +64,11 @@ interface FormData {
   supervisorsCost: string;
   operatorsCost: string;
   mobilityCost: string;
+  customOperationalCosts: Array<{
+    id: string
+    name: string
+    amount: number
+  }>
 }
 
 export function QuotationForm() {
@@ -118,6 +124,7 @@ export function QuotationForm() {
       supervisorsCost: "",
       operatorsCost: "",
       mobilityCost: "",
+      customOperationalCosts: []
     }
   })
 
@@ -222,6 +229,7 @@ export function QuotationForm() {
       supervisorsCost: "",
       operatorsCost: "",
       mobilityCost: "",
+      customOperationalCosts: []
     })
   }
 
@@ -322,6 +330,13 @@ export function QuotationForm() {
     });
   }
 
+  const handleCustomOperationalCostsChange = (costs: Array<{ id: string, name: string, amount: number }>) => {
+    setFormData(prev => ({
+      ...prev,
+      customOperationalCosts: costs
+    }))
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
@@ -361,6 +376,11 @@ export function QuotationForm() {
         supervisorsCost: safeNumber(formData.supervisorsCost),
         operatorsCost: safeNumber(formData.operatorsCost),
         mobilityCost: safeNumber(formData.mobilityCost),
+        customOperationalCosts: formData.customOperationalCosts.map(cost => ({
+          id: cost.id,
+          name: cost.name,
+          amount: safeNumber(cost.amount)
+        })),
       }
 
       const response = await fetch("/api/calculate-quotation", {
@@ -904,75 +924,83 @@ export function QuotationForm() {
             </TabsContent>
 
             <TabsContent value="operational" className="space-y-6">
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <TooltipLabel
-                    htmlFor="credentialsCost"
-                    label="Costo de Credenciales"
-                    tooltip="El costo total para credenciales y control de acceso."
-                    required={false}
-                  />
-                  <Input
-                    id="credentialsCost"
-                    name="credentialsCost"
-                    type="number"
-                    value={formData.credentialsCost}
-                    onChange={handleInputChange}
-                    className="w-full"
-                    placeholder="Ingrese el costo"
-                  />
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Costos Operativos</h3>
+                
+                {/* Costos operativos fijos */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <TooltipLabel
+                      htmlFor="credentialsCost"
+                      label="Costo de Credenciales"
+                      tooltip="Costo total de las credenciales para el evento"
+                    />
+                    <Input
+                      id="credentialsCost"
+                      type="number"
+                      value={formData.credentialsCost}
+                      onChange={handleInputChange}
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <TooltipLabel
+                      htmlFor="supervisorsCost"
+                      label="Costo de Supervisores"
+                      tooltip="El costo total para supervisores y personal de gestión."
+                      required={false}
+                    />
+                    <Input
+                      id="supervisorsCost"
+                      name="supervisorsCost"
+                      type="number"
+                      value={formData.supervisorsCost}
+                      onChange={handleInputChange}
+                      className="w-full"
+                      placeholder="Ingrese el costo"
+                    />
+                  </div>
+                  <div>
+                    <TooltipLabel
+                      htmlFor="operatorsCost"
+                      label="Costo de Operadores"
+                      tooltip="El costo total para operadores y personal en sitio."
+                      required={false}
+                    />
+                    <Input
+                      id="operatorsCost"
+                      name="operatorsCost"
+                      type="number"
+                      value={formData.operatorsCost}
+                      onChange={handleInputChange}
+                      className="w-full"
+                      placeholder="Ingrese el costo"
+                    />
+                  </div>
+                  <div>
+                    <TooltipLabel
+                      htmlFor="mobilityCost"
+                      label="Costo de Movilidad"
+                      tooltip="El costo total para transporte y logística."
+                      required={false}
+                    />
+                    <Input
+                      id="mobilityCost"
+                      name="mobilityCost"
+                      type="number"
+                      value={formData.mobilityCost}
+                      onChange={handleInputChange}
+                      className="w-full"
+                      placeholder="Ingrese el costo"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-4">
-                  <TooltipLabel
-                    htmlFor="supervisorsCost"
-                    label="Costo de Supervisores"
-                    tooltip="El costo total para supervisores y personal de gestión."
-                    required={false}
-                  />
-                  <Input
-                    id="supervisorsCost"
-                    name="supervisorsCost"
-                    type="number"
-                    value={formData.supervisorsCost}
-                    onChange={handleInputChange}
-                    className="w-full"
-                    placeholder="Ingrese el costo"
-                  />
-                </div>
-                <div className="space-y-4">
-                  <TooltipLabel
-                    htmlFor="operatorsCost"
-                    label="Costo de Operadores"
-                    tooltip="El costo total para operadores y personal en sitio."
-                    required={false}
-                  />
-                  <Input
-                    id="operatorsCost"
-                    name="operatorsCost"
-                    type="number"
-                    value={formData.operatorsCost}
-                    onChange={handleInputChange}
-                    className="w-full"
-                    placeholder="Ingrese el costo"
-                  />
-                </div>
-                <div className="space-y-4">
-                  <TooltipLabel
-                    htmlFor="mobilityCost"
-                    label="Costo de Movilidad"
-                    tooltip="El costo total para transporte y logística."
-                    required={false}
-                  />
-                  <Input
-                    id="mobilityCost"
-                    name="mobilityCost"
-                    type="number"
-                    value={formData.mobilityCost}
-                    onChange={handleInputChange}
-                    className="w-full"
-                    placeholder="Ingrese el costo"
-                  />
-                </div>
+
+                {/* Costos operativos personalizados */}
+                <CustomOperationalCosts
+                  value={formData.customOperationalCosts}
+                  onChange={handleCustomOperationalCostsChange}
+                />
               </div>
             </TabsContent>
           </Tabs>
