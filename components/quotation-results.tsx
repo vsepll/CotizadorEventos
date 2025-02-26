@@ -85,78 +85,73 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
 
   const COLOR_PALETTE = {
     revenue: {
-      platform: "#3B82F6",      // Blue for platform fees
-      ticketing: "#10B981",     // Green for ticketing fees
-      additional: "#8B5CF6",    // Purple for additional services
+      service: "#3B82F6",
+      additional: "#8B5CF6",
     },
     costs: {
-      payway: "#F43F5E",        // Red for payment fees
-      palco4: "#F59E0B",        // Amber for Palco 4 costs
-      line: "#6366F1",          // Indigo for line costs
-      operational: "#14B8A6",   // Teal for operational costs
+      platform: "#F43F5E",
+      payway: "#F43F5E",
+      palco4: "#F59E0B",
+      line: "#6366F1",
+      operational: "#14B8A6",
     },
     profitability: {
-      revenue: "#10B981",       // Green for revenue
-      costs: "#F43F5E",         // Red for costs
-      margin: "#8B5CF6",        // Purple for gross margin
+      revenue: "#10B981",
+      costs: "#F43F5E",
+      margin: "#8B5CF6",
     }
   }
 
   const revenueData = [
     { 
-      name: "Comisión de Plataforma", 
-      value: results.platformFee,
-      color: COLOR_PALETTE.revenue.platform 
-    },
-    { 
-      name: "Comisión de Ticketing", 
-      value: results.ticketingFee,
-      color: COLOR_PALETTE.revenue.ticketing 
+      name: "Cargo por Servicio", 
+      value: Number(results.ticketingFee) || 0,
+      color: COLOR_PALETTE.revenue.service 
     },
     { 
       name: "Servicios Adicionales", 
-      value: results.additionalServices,
+      value: Number(results.additionalServices) || 0,
       color: COLOR_PALETTE.revenue.additional 
     },
   ]
 
   const costsData = [
     { 
+      name: "Palco 4", 
+      value: Number(results.palco4Cost) || 0,
+      color: COLOR_PALETTE.costs.platform 
+    },
+    { 
       name: "Comisiones de Pago", 
-      value: results.paywayFees.total,
+      value: Number(results.paywayFees?.total) || 0,
       color: COLOR_PALETTE.costs.payway 
     },
-    { 
-      name: "Palco 4", 
-      value: results.palco4Cost,
-      color: COLOR_PALETTE.costs.palco4 
-    },
-    { 
+    ...(results.lineCost > 0 ? [{
       name: "Line", 
-      value: results.lineCost,
+      value: Number(results.lineCost) || 0,
       color: COLOR_PALETTE.costs.line 
-    },
+    }] : []),
     { 
       name: "Costos Operativos", 
-      value: results.operationalCosts.total,
+      value: Number(results.operationalCosts?.total) || 0,
       color: COLOR_PALETTE.costs.operational 
     },
-  ]
+  ].filter(item => item.value > 0)
 
   const profitabilityData = [
     { 
       name: "Ingresos", 
-      value: results.totalRevenue,
+      value: Number(results.totalRevenue) || 0,
       color: COLOR_PALETTE.profitability.revenue 
     },
     { 
       name: "Costos", 
-      value: results.totalCosts,
+      value: Number(results.totalCosts) || 0,
       color: COLOR_PALETTE.profitability.costs 
     },
     { 
       name: "Margen Bruto", 
-      value: results.grossMargin,
+      value: Number(results.grossMargin) || 0,
       color: COLOR_PALETTE.profitability.margin 
     },
   ]
@@ -178,7 +173,7 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
         <div className="flex items-center justify-between">
           <div className="space-y-1">
             <p className="text-2xl font-bold">
-              {prefix}{typeof value === 'number' ? value.toFixed(2) : '0.00'}{suffix}
+              {prefix}{value.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{suffix}
             </p>
             {trend !== 0 && (
               <p className={`text-sm flex items-center ${trend > 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -193,20 +188,24 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
   )
 
   const DetailCard = ({ title, items, icon: Icon }: DetailCardProps) => (
-    <Card className="overflow-hidden transition-all hover:shadow-lg">
+    <Card className="overflow-hidden transition-all hover:shadow-lg bg-black text-white">
       <CardHeader className="pb-2">
         <div className="flex items-center space-x-2">
-          <Icon className="w-4 h-4 text-muted-foreground" />
-          <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
+          <Icon className="w-4 h-4 text-gray-400" />
+          <CardTitle className="text-sm font-medium text-gray-400">{title}</CardTitle>
         </div>
       </CardHeader>
       <CardContent>
-        <div className="space-y-2">
-          {items.map((item, index) => (
-            <div key={index} className="flex justify-between items-center py-1 border-b last:border-0">
-              <span className="text-sm text-muted-foreground">{item.label}</span>
-              <span className="font-medium">
-                ${typeof item.value === 'number' ? item.value.toFixed(2) : '0.00'}
+        <div className="space-y-4">
+          {items.filter(item => item.value > 0).map((item, index) => (
+            <div key={index} className="flex justify-between items-center">
+              <span className="text-sm text-gray-400">{item.label}</span>
+              <span className="text-lg font-semibold text-white">
+                ${item.value.toLocaleString('es-AR', { 
+                  minimumFractionDigits: 2, 
+                  maximumFractionDigits: 2,
+                  useGrouping: true 
+                })}
               </span>
             </div>
           ))}
@@ -443,7 +442,7 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
             </TabsList>
 
             <TabsContent value="summary" className="space-y-6">
-              <div className="grid grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatCard
                   title="Ingresos Totales"
                   value={results.totalRevenue}
@@ -468,47 +467,55 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-6">
-                <DetailCard
-                  title="Comisiones de Medios de Pago"
-                  icon={CreditCard}
-                  items={[
-                    { label: "Tarjeta de Crédito", value: results.paywayFees.credit },
-                    { label: "Tarjeta de Débito", value: results.paywayFees.debit },
-                    { label: "Efectivo", value: results.paywayFees.cash },
-                    { label: "Total Comisiones", value: results.paywayFees.total },
-                  ]}
-                />
-                <DetailCard
-                  title="Costos Operativos"
-                  icon={Building}
-                  items={[
-                    { label: "Credenciales", value: results.operationalCosts.credentials },
-                    { label: "Ticketing", value: results.operationalCosts.ticketing },
-                    { label: "Supervisores", value: results.operationalCosts.supervisors },
-                    { label: "Operadores", value: results.operationalCosts.operators },
-                    { label: "Movilidad", value: results.operationalCosts.mobility },
-                  ]}
-                />
-              </div>
+              {/* Solo mostrar la sección de costos operativos si hay algún costo */}
+              {Object.values(results.operationalCosts).some(cost => cost > 0) && (
+                <div className="grid grid-cols-1 gap-6">
+                  <DetailCard
+                    title="Costos Operativos"
+                    icon={Building}
+                    items={[
+                      ...(results.operationalCosts.credentials > 0 ? [{ label: "Credenciales", value: results.operationalCosts.credentials }] : []),
+                      ...(results.operationalCosts.ticketing > 0 ? [{ label: "Ticketing", value: results.operationalCosts.ticketing }] : []),
+                      ...(results.operationalCosts.supervisors > 0 ? [{ label: "Supervisores", value: results.operationalCosts.supervisors }] : []),
+                      ...(results.operationalCosts.operators > 0 ? [{ label: "Operadores", value: results.operationalCosts.operators }] : []),
+                      ...(results.operationalCosts.mobility > 0 ? [{ label: "Movilidad", value: results.operationalCosts.mobility }] : []),
+                      { label: "Total Operativo", value: results.operationalCosts.total },
+                    ].filter(item => item.value > 0)}
+                  />
+                </div>
+              )}
 
-              <div className="grid grid-cols-2 gap-6">
-                <DetailCard
-                  title="Costos Adicionales"
-                  icon={Activity}
-                  items={[
-                    { label: "Palco 4", value: results.palco4Cost },
-                    { label: "Line", value: results.lineCost },
-                  ]}
-                />
-                <DetailCard
-                  title="Información de Tickets"
-                  icon={Users}
-                  items={[
-                    { label: "Cantidad de Tickets", value: results.ticketQuantity },
-                    { label: "Costo por Ticket", value: results.operationalCosts.ticketing / results.ticketQuantity },
-                  ]}
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Solo mostrar costos de plataforma si hay costos de Palco 4 o Line */}
+                {(results.palco4Cost > 0 || results.lineCost > 0) && (
+                  <DetailCard
+                    title="Costos de Plataforma"
+                    icon={Activity}
+                    items={[
+                      ...(results.palco4Cost > 0 ? [{ 
+                        label: "Palco 4",
+                        value: results.palco4Cost 
+                      }] : []),
+                      ...(results.lineCost > 0 ? [{ 
+                        label: "Line", 
+                        value: results.lineCost 
+                      }] : [])
+                    ].filter(item => item.value > 0)}
+                  />
+                )}
+                
+                {/* Solo mostrar información de tickets si hay datos relevantes */}
+                {(results.ticketQuantity > 0 || results.ticketingFee > 0 || results.additionalServices > 0) && (
+                  <DetailCard
+                    title="Información de Tickets"
+                    icon={Users}
+                    items={[
+                      ...(results.ticketQuantity > 0 ? [{ label: "Cantidad de Tickets", value: results.ticketQuantity }] : []),
+                      ...(results.ticketingFee > 0 ? [{ label: "Cargo por Servicio", value: results.ticketingFee }] : []),
+                      ...(results.additionalServices > 0 ? [{ label: "Servicios Adicionales", value: results.additionalServices }] : [])
+                    ].filter(item => item.value > 0)}
+                  />
+                )}
               </div>
             </TabsContent>
 
@@ -520,7 +527,7 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
                     <CardContent className="pt-4 flex justify-between items-center">
                       <div>
                         <p className="text-sm text-muted-foreground">{item.name}</p>
-                        <p className="text-lg font-bold">${item.value.toFixed(2)}</p>
+                        <p className="text-lg font-bold">${(Number(item.value) || 0).toFixed(2)}</p>
                       </div>
                     </CardContent>
                   </Card>
@@ -535,7 +542,7 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
                     <CardContent className="pt-4 flex justify-between items-center">
                       <div>
                         <p className="text-sm text-muted-foreground">{item.name}</p>
-                        <p className="text-lg font-bold">${item.value.toFixed(2)}</p>
+                        <p className="text-lg font-bold">${(Number(item.value) || 0).toFixed(2)}</p>
                       </div>
                     </CardContent>
                   </Card>
@@ -550,7 +557,7 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
                     <CardContent className="pt-4 flex justify-between items-center">
                       <div>
                         <p className="text-sm text-muted-foreground">{item.name}</p>
-                        <p className="text-lg font-bold">${item.value.toFixed(2)}</p>
+                        <p className="text-lg font-bold">${(Number(item.value) || 0).toFixed(2)}</p>
                       </div>
                     </CardContent>
                   </Card>

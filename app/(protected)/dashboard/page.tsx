@@ -43,7 +43,9 @@ export default function DashboardPage() {
 
     const fetchStats = async () => {
       try {
-        const response = await fetch("/api/quotations/stats")
+        const response = await fetch("/api/quotations/stats", {
+          credentials: "include"
+        })
         if (!response.ok) {
           throw new Error("Error al cargar las estadísticas")
         }
@@ -89,7 +91,7 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center space-x-2">
           <Button asChild>
-            <Link href="/quotations/new">Nueva cotización</Link>
+            <Link href="/quotation">Nueva cotización</Link>
           </Button>
         </div>
       </div>
@@ -114,9 +116,9 @@ export default function DashboardPage() {
           </div>
           <div className="mt-4">
             <p className="text-2xl font-bold">
-              {stats?.totalRevenue.toLocaleString("es-MX", {
-                style: "currency",
-                currency: "MXN",
+              ${stats?.totalRevenue.toLocaleString("es-AR", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
               })}
             </p>
           </div>
@@ -129,11 +131,10 @@ export default function DashboardPage() {
           </div>
           <div className="mt-4">
             <p className="text-2xl font-bold">
-              {stats?.averageProfitability.toLocaleString("es-MX", {
-                style: "percent",
-                minimumFractionDigits: 1,
-                maximumFractionDigits: 1,
-              })}
+              {stats?.averageProfitability.toLocaleString("es-AR", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              })}%
             </p>
           </div>
         </Card>
@@ -165,7 +166,7 @@ export default function DashboardPage() {
                     {quotation.eventType}
                   </Link>
                   <p className="text-sm text-muted-foreground">
-                    {new Date(quotation.createdAt).toLocaleDateString("es-MX", {
+                    {new Date(quotation.createdAt).toLocaleDateString("es-AR", {
                       day: "numeric",
                       month: "long",
                       year: "numeric",
@@ -174,11 +175,10 @@ export default function DashboardPage() {
                 </div>
                 <div className="text-right">
                   <p className="font-medium">
-                    {quotation.grossProfitability.toLocaleString("es-MX", {
-                      style: "percent",
-                      minimumFractionDigits: 1,
-                      maximumFractionDigits: 1,
-                    })}
+                    {quotation.grossProfitability.toLocaleString("es-AR", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2
+                    })}%
                   </p>
                 </div>
               </div>

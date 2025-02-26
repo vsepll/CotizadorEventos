@@ -10,12 +10,26 @@ const QuotationInputSchema = z.object({
   eventType: z.enum(["A", "B", "C", "D"]),
   totalAmount: z.number().positive(),
   ticketPrice: z.number().positive(),
-  platformPercentage: z.number().min(0).max(100).optional(),
-  ticketingPercentage: z.number().min(0).max(100).optional(),
+  platform: z.object({
+    name: z.enum(["TICKET_PLUS", "PALCO4"]),
+    percentage: z.number().min(0).max(100)
+  }),
+  serviceCharge: z.number().min(0).max(100),
   additionalServicesPercentage: z.number().min(0).max(100).optional(),
-  creditCardPercentage: z.number().min(0).max(100).optional(),
-  debitCardPercentage: z.number().min(0).max(100).optional(),
-  cashPercentage: z.number().min(0).max(100).optional(),
+  paymentMethods: z.object({
+    credit: z.object({
+      percentage: z.number().min(0).max(100),
+      chargedTo: z.enum(["US", "CLIENT", "CONSUMER"]).default("CONSUMER")
+    }).optional(),
+    debit: z.object({
+      percentage: z.number().min(0).max(100),
+      chargedTo: z.enum(["US", "CLIENT", "CONSUMER"]).default("CONSUMER")
+    }).optional(),
+    cash: z.object({
+      percentage: z.number().min(0).max(100),
+      chargedTo: z.enum(["US", "CLIENT", "CONSUMER"]).default("CONSUMER")
+    }).optional()
+  }),
   credentialsCost: z.number().nonnegative().optional(),
   supervisorsCost: z.number().nonnegative().optional(),
   operatorsCost: z.number().nonnegative().optional(),
@@ -28,84 +42,112 @@ function calculateQuotation(input: QuotationInput, globalParameters: any) {
   const {
     totalAmount,
     ticketPrice,
-    platformPercentage = globalParameters.defaultPlatformFee,
-    ticketingPercentage = globalParameters.defaultTicketingFee,
-    additionalServicesPercentage = globalParameters.defaultAdditionalServicesFee,
-    creditCardPercentage = globalParameters.defaultCreditCardFee,
-    debitCardPercentage = globalParameters.defaultDebitCardFee,
-    cashPercentage = globalParameters.defaultCashFee,
+    platform,
+    serviceCharge,
+    additionalServicesPercentage = 0,
+    paymentMethods,
     credentialsCost = globalParameters.defaultCredentialsCost,
     supervisorsCost = globalParameters.defaultSupervisorsCost,
     operatorsCost = globalParameters.defaultOperatorsCost,
     mobilityCost = globalParameters.defaultMobilityCost,
   } = input
 
-  // Calculate ticket quantity
-  const ticketQuantity = Math.round(totalAmount / ticketPrice)
+  // Calculate total value
+  const ticketQuantity = totalAmount
+  const totalValue = ticketQuantity * ticketPrice
 
-  // Calculate platform and ticketing fees
-  const platformFee = totalAmount * (platformPercentage / 100)
-  const ticketingFee = totalAmount * (ticketingPercentage / 100)
+  // Calculate platform fee (as a cost)
+  const platformFee = platform.name === "PALCO4" 
+    ? ticketQuantity * globalParameters.palco4FeePerTicket 
+    : totalValue * (platform.percentage / 100)
 
-  // Calculate additional services
-  const additionalServices = totalAmount * (additionalServicesPercentage / 100)
+  // Calculate service charge and additional services (our revenue)
+  const serviceChargeFee = totalValue * (serviceCharge / 100)
+  const additionalServices = totalValue * (additionalServicesPercentage / 100)
 
-  // Calculate Payway fees
-  const paywayFees = {
-    credit: totalAmount * (creditCardPercentage / 100),
-    debit: totalAmount * (debitCardPercentage / 100),
-    cash: totalAmount * (cashPercentage / 100),
-    total: 0,
-  }
-  paywayFees.total = paywayFees.credit + paywayFees.debit + paywayFees.cash
+  // Calculate payment fees
+  const creditFee = paymentMethods.credit 
+    ? totalValue * (paymentMethods.credit.percentage / 100)
+    : 0
+  const debitFee = paymentMethods.debit
+    ? totalValue * (paymentMethods.debit.percentage / 100)
+    : 0
+  const cashFee = paymentMethods.cash
+    ? totalValue * (paymentMethods.cash.percentage / 100)
+    : 0
 
-  // Calculate Palco 4 cost
-  const palco4Cost = ticketQuantity * globalParameters.palco4FeePerTicket
+  // Calculate costs based on who absorbs the payment fees
+  const ourPaymentCosts = (
+    (paymentMethods.credit?.chargedTo === "US" ? creditFee : 0) +
+    (paymentMethods.debit?.chargedTo === "US" ? debitFee : 0) +
+    (paymentMethods.cash?.chargedTo === "US" ? cashFee : 0)
+  )
 
-  // Calculate Line cost
-  const lineCost = totalAmount * (globalParameters.lineCostPercentage / 100)
+  // Calculate Line cost (only if not using Palco4)
+  const lineCost = platform.name === "PALCO4" ? 0 : totalValue * (globalParameters.lineCostPercentage / 100)
 
   // Calculate operational costs
   const operationalCosts = {
-    credentials: credentialsCost,
-    ticketing: ticketQuantity * globalParameters.ticketingCostPerTicket,
-    supervisors: supervisorsCost,
-    operators: operatorsCost,
-    mobility: mobilityCost,
-    total: 0,
+    credentials: Number(credentialsCost) || 0,
+    ticketing: platform.name === "PALCO4" ? 0 : ticketQuantity * globalParameters.ticketingCostPerTicket,
+    supervisors: Number(supervisorsCost) || 0,
+    operators: Number(operatorsCost) || 0,
+    mobility: Number(mobilityCost) || 0,
+    total: 0
   }
-  operationalCosts.total =
+  operationalCosts.total = 
     operationalCosts.credentials +
     operationalCosts.ticketing +
     operationalCosts.supervisors +
     operationalCosts.operators +
     operationalCosts.mobility
 
-  // Calculate total revenue
-  const totalRevenue = platformFee + ticketingFee + additionalServices
+  // Format payment fees for response
+  const paywayFees = {
+    credit: creditFee,
+    debit: debitFee,
+    cash: cashFee,
+    total: ourPaymentCosts
+  }
 
-  // Calculate total costs
-  const totalCosts = paywayFees.total + palco4Cost + lineCost + operationalCosts.total
+  // Calculate total revenue (service charge + additional services)
+  const totalRevenue = serviceChargeFee + additionalServices
 
-  // Calculate gross margin
+  // Calculate total costs (platform fee + line cost + operational costs + our payment costs)
+  const totalCosts = platformFee + lineCost + operationalCosts.total + ourPaymentCosts
+
+  // Calculate gross margin and profitability
   const grossMargin = totalRevenue - totalCosts
+  const grossProfitability = totalRevenue > 0 ? (grossMargin / totalRevenue) * 100 : 0
 
-  // Calculate gross profitability
-  const grossProfitability = (grossMargin / totalRevenue) * 100
+  // Log calculations for debugging
+  console.log('Calculation details:', {
+    totalValue,
+    serviceChargeFee,
+    additionalServices,
+    platformFee,
+    lineCost,
+    operationalCosts,
+    paywayFees,
+    totalRevenue,
+    totalCosts,
+    grossMargin,
+    grossProfitability
+  })
 
   return {
     ticketQuantity,
     platformFee,
-    ticketingFee,
+    ticketingFee: serviceChargeFee,
     additionalServices,
     paywayFees,
-    palco4Cost,
+    palco4Cost: platform.name === "PALCO4" ? platformFee : 0,
     lineCost,
     operationalCosts,
     totalRevenue,
     totalCosts,
     grossMargin,
-    grossProfitability,
+    grossProfitability
   }
 }
 

@@ -35,52 +35,147 @@ interface TooltipLabelProps {
   required?: boolean;
 }
 
+interface FormData {
+  eventType: string;
+  totalAmount: string;
+  ticketPrice: string;
+  platform: {
+    name: "TICKET_PLUS" | "PALCO4";
+    percentage: string;
+  };
+  serviceCharge: string;
+  additionalServicesPercentage: string;
+  paymentMethods: {
+    credit: {
+      percentage: string;
+      chargedTo: "US" | "CLIENT" | "CONSUMER";
+    };
+    debit: {
+      percentage: string;
+      chargedTo: "US" | "CLIENT" | "CONSUMER";
+    };
+    cash: {
+      percentage: string;
+      chargedTo: "US" | "CLIENT" | "CONSUMER";
+    };
+  };
+  credentialsCost: string;
+  supervisorsCost: string;
+  operatorsCost: string;
+  mobilityCost: string;
+}
+
 export function QuotationForm() {
   const { data: session } = useSession()
   const { toast } = useToast()
   const router = useRouter()
-  const [formData, setFormData] = useState({
-    eventType: "",
-    totalAmount: "",
-    ticketPrice: "",
-    platformPercentage: "",
-    ticketingPercentage: "",
-    additionalServicesPercentage: "",
-    creditCardPercentage: "",
-    debitCardPercentage: "",
-    cashPercentage: "",
-    credentialsCost: "",
-    supervisorsCost: "",
-    operatorsCost: "",
-    mobilityCost: "",
+  
+  // Manejar el estado de la pestaña activa
+  const [activeTab, setActiveTab] = useState(() => {
+    // Recuperar la pestaña activa de localStorage si existe
+    const savedTab = localStorage.getItem('quotationActiveTab')
+    return savedTab || "event"
   })
+
+  // Manejar el estado del formulario con valores guardados o iniciales
+  const [formData, setFormData] = useState<FormData>(() => {
+    try {
+      // Intentar recuperar datos guardados de localStorage
+      const savedData = localStorage.getItem('quotationFormData')
+      if (savedData) {
+        return JSON.parse(savedData)
+      }
+    } catch (error) {
+      console.error('Error loading saved form data:', error)
+    }
+    
+    // Si no hay datos guardados, usar valores iniciales vacíos
+    return {
+      eventType: "",
+      totalAmount: "",
+      ticketPrice: "",
+      platform: {
+        name: "TICKET_PLUS",
+        percentage: ""
+      },
+      serviceCharge: "",
+      additionalServicesPercentage: "",
+      paymentMethods: {
+        credit: {
+          percentage: "",
+          chargedTo: "CONSUMER"
+        },
+        debit: {
+          percentage: "",
+          chargedTo: "CONSUMER"
+        },
+        cash: {
+          percentage: "",
+          chargedTo: "CONSUMER"
+        }
+      },
+      credentialsCost: "",
+      supervisorsCost: "",
+      operatorsCost: "",
+      mobilityCost: "",
+    }
+  })
+
   const [results, setResults] = useState<QuotationResults | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [quotationName, setQuotationName] = useState("")
-  const [activeTab, setActiveTab] = useState("event")
 
+  // Guardar la pestaña activa en localStorage cuando cambia
+  useEffect(() => {
+    localStorage.setItem('quotationActiveTab', activeTab)
+  }, [activeTab])
+
+  // Guardar datos del formulario en localStorage cuando cambian
+  useEffect(() => {
+    localStorage.setItem('quotationFormData', JSON.stringify(formData))
+  }, [formData])
+
+  // Cargar parámetros globales solo si no hay datos guardados
   useEffect(() => {
     const fetchGlobalParameters = async () => {
       try {
-        const response = await fetch("/api/admin/parameters")
-        if (!response.ok) {
-          throw new Error("Failed to fetch global parameters")
+        // Solo cargar parámetros si no hay datos guardados en localStorage
+        if (!localStorage.getItem('quotationFormData')) {
+          const response = await fetch("/api/admin/parameters")
+          if (!response.ok) {
+            throw new Error("Failed to fetch global parameters")
+          }
+          const data = await response.json()
+          
+          setFormData((prevData) => ({
+            ...prevData,
+            platform: {
+              name: "TICKET_PLUS",
+              percentage: data.defaultPlatformFee.toString()
+            },
+            serviceCharge: data.defaultTicketingFee.toString(),
+            additionalServicesPercentage: data.defaultAdditionalServicesFee.toString(),
+            paymentMethods: {
+              credit: {
+                percentage: data.defaultCreditCardFee.toString(),
+                chargedTo: "CONSUMER"
+              },
+              debit: {
+                percentage: data.defaultDebitCardFee.toString(),
+                chargedTo: "CONSUMER"
+              },
+              cash: {
+                percentage: data.defaultCashFee.toString(),
+                chargedTo: "CONSUMER"
+              }
+            },
+            credentialsCost: data.defaultCredentialsCost.toString(),
+            supervisorsCost: data.defaultSupervisorsCost.toString(),
+            operatorsCost: data.defaultOperatorsCost.toString(),
+            mobilityCost: data.defaultMobilityCost.toString(),
+          }))
         }
-        const data = await response.json()
-        setFormData((prevData) => ({
-          ...prevData,
-          platformPercentage: data.defaultPlatformFee.toString(),
-          ticketingPercentage: data.defaultTicketingFee.toString(),
-          additionalServicesPercentage: data.defaultAdditionalServicesFee.toString(),
-          creditCardPercentage: data.defaultCreditCardFee.toString(),
-          debitCardPercentage: data.defaultDebitCardFee.toString(),
-          cashPercentage: data.defaultCashFee.toString(),
-          credentialsCost: data.defaultCredentialsCost.toString(),
-          supervisorsCost: data.defaultSupervisorsCost.toString(),
-          operatorsCost: data.defaultOperatorsCost.toString(),
-          mobilityCost: data.defaultMobilityCost.toString(),
-        }))
       } catch (error) {
         console.error("Error fetching global parameters:", error)
         toast({
@@ -90,17 +185,141 @@ export function QuotationForm() {
         })
       }
     }
-
+    
     fetchGlobalParameters()
   }, [toast])
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
+  // Función mejorada para limpiar datos
+  const clearFormData = () => {
+    localStorage.removeItem('quotationFormData')
+    localStorage.removeItem('quotationActiveTab')
+    setActiveTab("event")
+    setFormData({
+      eventType: "",
+      totalAmount: "",
+      ticketPrice: "",
+      platform: {
+        name: "TICKET_PLUS",
+        percentage: ""
+      },
+      serviceCharge: "",
+      additionalServicesPercentage: "",
+      paymentMethods: {
+        credit: {
+          percentage: "",
+          chargedTo: "CONSUMER"
+        },
+        debit: {
+          percentage: "",
+          chargedTo: "CONSUMER"
+        },
+        cash: {
+          percentage: "",
+          chargedTo: "CONSUMER"
+        }
+      },
+      credentialsCost: "",
+      supervisorsCost: "",
+      operatorsCost: "",
+      mobilityCost: "",
+    })
   }
 
-  const handleSelectChange = (value: string) => {
-    setFormData((prev) => ({ ...prev, eventType: value }))
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target
+    const [parent, child] = name.split('.')
+    
+    setFormData((prev) => {
+      if (!child) {
+        return { ...prev, [name]: value }
+      }
+
+      if (parent === 'platform') {
+        return {
+          ...prev,
+          platform: {
+            ...prev.platform,
+            [child]: value
+          }
+        }
+      }
+
+      if (parent === 'paymentMethods') {
+        const [method, field] = child.split('.')
+        
+        // Para campos de porcentaje, aseguramos que se manejen correctamente los valores numéricos
+        if (field === 'percentage') {
+          // Permitir valores vacíos o numéricos
+          const validValue = value === '' ? '' : value;
+          
+          return {
+            ...prev,
+            paymentMethods: {
+              ...prev.paymentMethods,
+              [method]: {
+                ...prev.paymentMethods[method as keyof typeof prev.paymentMethods],
+                [field]: validValue
+              }
+            }
+          }
+        }
+        
+        return {
+          ...prev,
+          paymentMethods: {
+            ...prev.paymentMethods,
+            [method]: {
+              ...prev.paymentMethods[method as keyof typeof prev.paymentMethods],
+              [field]: value
+            }
+          }
+        }
+      }
+
+      return prev
+    })
+  }
+
+  const handlePlatformChange = (value: "TICKET_PLUS" | "PALCO4") => {
+    setFormData((prev) => ({
+      ...prev,
+      platform: {
+        ...prev.platform,
+        name: value
+      }
+    }))
+  }
+
+  const handlePaymentMethodChargeToChange = (
+    method: "credit" | "debit" | "cash",
+    value: "US" | "CLIENT" | "CONSUMER"
+  ) => {
+    // Cuando cambia quién absorbe el costo, nos aseguramos que los campos de entrada funcionen correctamente
+    setFormData((prev) => {
+      // Si el porcentaje está vacío y se selecciona algún valor, colocamos un valor predeterminado
+      // para los métodos comunes
+      let percentage = prev.paymentMethods[method].percentage;
+      
+      // Si el porcentaje estaba vacío y ahora seleccionamos un valor, sugerimos
+      // valores predeterminados según el método de pago
+      if (percentage === '' && value) {
+        if (method === 'credit') percentage = '3.67';
+        else if (method === 'debit') percentage = '0.8';
+        else if (method === 'cash') percentage = '0.5';
+      }
+      
+      return {
+        ...prev,
+        paymentMethods: {
+          ...prev.paymentMethods,
+          [method]: {
+            ...prev.paymentMethods[method],
+            chargedTo: value,
+            percentage
+          }
+        }
+      }
+    });
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -108,23 +327,41 @@ export function QuotationForm() {
     setIsLoading(true)
 
     try {
+      // Función auxiliar para convertir strings vacíos o inválidos a 0
+      const safeNumber = (value: string): number => {
+        const num = Number(value);
+        return isNaN(num) ? 0 : num;
+      };
+
       const data = {
         eventType: formData.eventType,
-        totalAmount: Number(formData.totalAmount),
-        ticketPrice: Number(formData.ticketPrice),
-        platformPercentage: Number(formData.platformPercentage),
-        ticketingPercentage: Number(formData.ticketingPercentage),
-        additionalServicesPercentage: Number(formData.additionalServicesPercentage),
-        creditCardPercentage: Number(formData.creditCardPercentage),
-        debitCardPercentage: Number(formData.debitCardPercentage),
-        cashPercentage: Number(formData.cashPercentage),
-        credentialsCost: Number(formData.credentialsCost),
-        supervisorsCost: Number(formData.supervisorsCost),
-        operatorsCost: Number(formData.operatorsCost),
-        mobilityCost: Number(formData.mobilityCost),
+        totalAmount: safeNumber(formData.totalAmount),
+        ticketPrice: safeNumber(formData.ticketPrice),
+        platform: {
+          name: formData.platform.name,
+          percentage: safeNumber(formData.platform.percentage)
+        },
+        serviceCharge: safeNumber(formData.serviceCharge),
+        additionalServicesPercentage: safeNumber(formData.additionalServicesPercentage),
+        paymentMethods: {
+          credit: {
+            percentage: safeNumber(formData.paymentMethods.credit.percentage),
+            chargedTo: formData.paymentMethods.credit.chargedTo
+          },
+          debit: {
+            percentage: safeNumber(formData.paymentMethods.debit.percentage),
+            chargedTo: formData.paymentMethods.debit.chargedTo
+          },
+          cash: {
+            percentage: safeNumber(formData.paymentMethods.cash.percentage),
+            chargedTo: formData.paymentMethods.cash.chargedTo
+          }
+        },
+        credentialsCost: safeNumber(formData.credentialsCost),
+        supervisorsCost: safeNumber(formData.supervisorsCost),
+        operatorsCost: safeNumber(formData.operatorsCost),
+        mobilityCost: safeNumber(formData.mobilityCost),
       }
-
-      console.log('Sending data:', data)
 
       const response = await fetch("/api/calculate-quotation", {
         method: "POST",
@@ -162,8 +399,6 @@ export function QuotationForm() {
       return
     }
 
-    console.log('Current session:', session)
-
     setIsSaving(true)
     try {
       const response = await fetch("/api/quotations", {
@@ -183,7 +418,6 @@ export function QuotationForm() {
 
       if (!response.ok) {
         const errorData = await response.json()
-        console.log('Error response:', errorData)
         throw new Error(errorData.error || "Failed to save quotation")
       }
 
@@ -192,8 +426,11 @@ export function QuotationForm() {
         description: "Quotation saved successfully",
       })
       
-      // Redirect to quotations list
-      router.push('/quotations')
+      // Limpiar datos después de guardar exitosamente
+      clearFormData()
+      
+      // Redirect to dashboard
+      router.push('/dashboard')
     } catch (error) {
       console.error("Error saving quotation:", error)
       toast({
@@ -226,20 +463,81 @@ export function QuotationForm() {
   )
 
   const isFormValid = () => {
-    return (
+    // Validar que los números sean válidos
+    const isValidNumber = (value: string) => {
+      const num = Number(value)
+      return !isNaN(num) && num >= 0
+    }
+
+    // Campos obligatorios básicos
+    const requiredFieldsValid = 
       formData.eventType &&
-      formData.totalAmount &&
-      formData.ticketPrice &&
-      formData.platformPercentage &&
-      formData.ticketingPercentage &&
-      formData.additionalServicesPercentage &&
-      formData.creditCardPercentage &&
-      formData.debitCardPercentage &&
-      formData.cashPercentage &&
-      formData.credentialsCost &&
-      formData.supervisorsCost &&
-      formData.operatorsCost &&
-      formData.mobilityCost
+      isValidNumber(formData.totalAmount) &&
+      isValidNumber(formData.ticketPrice) &&
+      formData.platform.name &&
+      isValidNumber(formData.platform.percentage) &&
+      isValidNumber(formData.serviceCharge)
+
+    // Validar medios de pago
+    const validatePaymentMethod = (method: { percentage: string, chargedTo: string }) => {
+      // Si hay porcentaje, debe ser válido y tener quién lo absorbe
+      if (method.percentage && method.percentage !== "") {
+        return isValidNumber(method.percentage) && method.chargedTo !== ""
+      }
+      // Si no hay porcentaje, es válido (no se está usando este método)
+      return true
+    }
+
+    // Verificar si al menos un medio de pago está configurado completamente
+    const isPaymentMethodConfigured = (method: { percentage: string, chargedTo: string }) => {
+      return method.percentage !== "" && method.chargedTo !== "" && isValidNumber(method.percentage)
+    }
+
+    const hasAtLeastOnePaymentMethod = 
+      isPaymentMethodConfigured(formData.paymentMethods.credit) ||
+      isPaymentMethodConfigured(formData.paymentMethods.debit) ||
+      isPaymentMethodConfigured(formData.paymentMethods.cash)
+
+    // Validar que todos los medios de pago configurados sean válidos
+    const paymentMethodsValid = 
+      validatePaymentMethod(formData.paymentMethods.credit) &&
+      validatePaymentMethod(formData.paymentMethods.debit) &&
+      validatePaymentMethod(formData.paymentMethods.cash)
+
+    // Validar costos operativos
+    const validateOptionalNumber = (value: string) => {
+      return !value || value === "" || isValidNumber(value)
+    }
+
+    const operationalCostsValid = 
+      validateOptionalNumber(formData.credentialsCost) &&
+      validateOptionalNumber(formData.supervisorsCost) &&
+      validateOptionalNumber(formData.operatorsCost) &&
+      validateOptionalNumber(formData.mobilityCost)
+
+    // Validar servicios adicionales
+    const additionalServicesValid = validateOptionalNumber(formData.additionalServicesPercentage)
+
+    console.log('Form Data:', formData)
+    console.log('Validation Results:', {
+      requiredFieldsValid,
+      paymentMethodsValid,
+      hasAtLeastOnePaymentMethod,
+      operationalCostsValid,
+      additionalServicesValid,
+      paymentMethods: {
+        credit: isPaymentMethodConfigured(formData.paymentMethods.credit),
+        debit: isPaymentMethodConfigured(formData.paymentMethods.debit),
+        cash: isPaymentMethodConfigured(formData.paymentMethods.cash)
+      }
+    })
+
+    return (
+      requiredFieldsValid &&
+      paymentMethodsValid &&
+      hasAtLeastOnePaymentMethod &&
+      operationalCostsValid &&
+      additionalServicesValid
     )
   }
 
@@ -269,13 +567,13 @@ export function QuotationForm() {
                 <Building2 className="h-4 w-4" />
                 <span>Evento</span>
               </TabsTrigger>
-              <TabsTrigger value="fees" className="flex items-center space-x-2">
+              <TabsTrigger value="platform" className="flex items-center space-x-2">
                 <Percent className="h-4 w-4" />
-                <span>Comisiones</span>
+                <span>Plataforma y Servicios</span>
               </TabsTrigger>
               <TabsTrigger value="payments" className="flex items-center space-x-2">
                 <CreditCard className="h-4 w-4" />
-                <span>Pagos</span>
+                <span>Medios de Pago</span>
               </TabsTrigger>
               <TabsTrigger value="operational" className="flex items-center space-x-2">
                 <Users className="h-4 w-4" />
@@ -292,7 +590,7 @@ export function QuotationForm() {
                     tooltip="Seleccione la categoría del evento que está cotizando."
                     required
                   />
-                  <Select value={formData.eventType} onValueChange={(value) => handleSelectChange(value)}>
+                  <Select value={formData.eventType} onValueChange={(value) => setFormData(prev => ({ ...prev, eventType: value }))}>
                     <SelectTrigger id="eventType" className="w-full">
                       <SelectValue placeholder="Seleccionar tipo de evento" />
                     </SelectTrigger>
@@ -307,8 +605,8 @@ export function QuotationForm() {
                 <div className="space-y-4">
                   <TooltipLabel
                     htmlFor="totalAmount"
-                    label="Monto Total del Evento"
-                    tooltip="El ingreso total esperado para el evento."
+                    label="Cantidad de Tickets"
+                    tooltip="Cantidad total de tickets a vender"
                     required
                   />
                   <Input
@@ -318,15 +616,15 @@ export function QuotationForm() {
                     value={formData.totalAmount}
                     onChange={handleInputChange}
                     className="w-full"
-                    placeholder="Ingrese el monto total"
+                    placeholder="Ej: 1000"
                     required
                   />
                 </div>
                 <div className="space-y-4">
                   <TooltipLabel
                     htmlFor="ticketPrice"
-                    label="Precio Promedio de Entrada"
-                    tooltip="El precio promedio de una entrada para el evento."
+                    label="Precio por Ticket"
+                    tooltip="Precio de venta por ticket"
                     required
                   />
                   <Input
@@ -336,27 +634,65 @@ export function QuotationForm() {
                     value={formData.ticketPrice}
                     onChange={handleInputChange}
                     className="w-full"
-                    placeholder="Ingrese el precio del ticket"
+                    placeholder="Ej: 50000"
                     required
                   />
                 </div>
               </div>
             </TabsContent>
 
-            <TabsContent value="fees" className="space-y-6">
-              <div className="grid grid-cols-3 gap-6">
+            <TabsContent value="platform" className="space-y-6">
+              <div className="grid grid-cols-1 gap-6">
                 <div className="space-y-4">
                   <TooltipLabel
-                    htmlFor="platformPercentage"
+                    htmlFor="platform.name"
+                    label="Plataforma de Ticketing"
+                    tooltip="Selecciona la plataforma que se utilizará"
+                    required
+                  />
+                  <Select 
+                    value={formData.platform.name} 
+                    onValueChange={handlePlatformChange}
+                  >
+                    <SelectTrigger id="platform.name" className="w-full">
+                      <SelectValue placeholder="Seleccionar plataforma" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="TICKET_PLUS">Ticket Plus</SelectItem>
+                      <SelectItem value="PALCO4">Palco 4</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-4">
+                  <TooltipLabel
+                    htmlFor="platform.percentage"
                     label="Comisión de Plataforma (%)"
-                    tooltip="El porcentaje de comisión cobrado por la plataforma de ticketing."
+                    tooltip="Porcentaje que cobra la plataforma por ticket (costo)"
                     required
                   />
                   <Input
-                    id="platformPercentage"
-                    name="platformPercentage"
+                    id="platform.percentage"
+                    name="platform.percentage"
                     type="number"
-                    value={formData.platformPercentage}
+                    value={formData.platform.percentage}
+                    onChange={handleInputChange}
+                    className="w-full"
+                    placeholder="Ej: 0.16"
+                    required
+                  />
+                </div>
+                <div className="space-y-4">
+                  <TooltipLabel
+                    htmlFor="serviceCharge"
+                    label="Cargo por Servicio (%)"
+                    tooltip="Porcentaje que cobramos como cargo por servicio (ingreso)"
+                    required
+                  />
+                  <Input
+                    id="serviceCharge"
+                    name="serviceCharge"
+                    type="number"
+                    value={formData.serviceCharge}
                     onChange={handleInputChange}
                     className="w-full"
                     placeholder="Ej: 5"
@@ -365,28 +701,10 @@ export function QuotationForm() {
                 </div>
                 <div className="space-y-4">
                   <TooltipLabel
-                    htmlFor="ticketingPercentage"
-                    label="Comisión de Ticketing (%)"
-                    tooltip="El porcentaje de comisión por servicios de ticketing."
-                    required
-                  />
-                  <Input
-                    id="ticketingPercentage"
-                    name="ticketingPercentage"
-                    type="number"
-                    value={formData.ticketingPercentage}
-                    onChange={handleInputChange}
-                    className="w-full"
-                    placeholder="Ej: 3"
-                    required
-                  />
-                </div>
-                <div className="space-y-4">
-                  <TooltipLabel
                     htmlFor="additionalServicesPercentage"
                     label="Servicios Adicionales (%)"
-                    tooltip="El porcentaje por servicios adicionales proporcionados."
-                    required
+                    tooltip="Porcentaje por servicios adicionales (ingreso)"
+                    required={false}
                   />
                   <Input
                     id="additionalServicesPercentage"
@@ -396,67 +714,191 @@ export function QuotationForm() {
                     onChange={handleInputChange}
                     className="w-full"
                     placeholder="Ej: 2"
-                    required
                   />
                 </div>
               </div>
             </TabsContent>
 
             <TabsContent value="payments" className="space-y-6">
-              <div className="grid grid-cols-3 gap-6">
-                <div className="space-y-4">
+              <div className="space-y-6">
+                {/* Tarjeta de Crédito */}
+                <div className="border p-4 rounded-lg">
                   <TooltipLabel
-                    htmlFor="creditCardPercentage"
-                    label="Comisión Tarjeta de Crédito (%)"
-                    tooltip="El porcentaje de comisión para transacciones con tarjeta de crédito."
-                    required
+                    htmlFor="paymentMethods.credit.percentage"
+                    label="Tarjeta de Crédito"
+                    tooltip="Configuración para pagos con tarjeta de crédito"
+                    required={false}
                   />
-                  <Input
-                    id="creditCardPercentage"
-                    name="creditCardPercentage"
-                    type="number"
-                    value={formData.creditCardPercentage}
-                    onChange={handleInputChange}
-                    className="w-full"
-                    placeholder="Ej: 3.67"
-                    required
-                  />
+                  <div className="grid grid-cols-2 gap-4 mt-2">
+                    <div>
+                      <Label htmlFor="paymentMethods.credit.chargedTo">¿Quién absorbe?</Label>
+                      <Select
+                        value={formData.paymentMethods.credit.chargedTo}
+                        onValueChange={(value: "US" | "CLIENT" | "CONSUMER") => {
+                          handlePaymentMethodChargeToChange("credit", value)
+                        }}
+                      >
+                        <SelectTrigger id="paymentMethods.credit.chargedTo">
+                          <SelectValue placeholder="Seleccionar">
+                            {formData.paymentMethods.credit.chargedTo === "US" ? "Nosotros" : 
+                             formData.paymentMethods.credit.chargedTo === "CLIENT" ? "Cliente" : 
+                             formData.paymentMethods.credit.chargedTo === "CONSUMER" ? "Consumidor" : "Seleccionar"}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="US">Nosotros</SelectItem>
+                          <SelectItem value="CLIENT">Cliente</SelectItem>
+                          <SelectItem value="CONSUMER">Consumidor</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="paymentMethods.credit.percentage">Comisión (%)</Label>
+                      <Input
+                        id="paymentMethods.credit.percentage"
+                        name="paymentMethods.credit.percentage"
+                        type="number"
+                        value={formData.paymentMethods.credit.percentage}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setFormData(prev => ({
+                            ...prev,
+                            paymentMethods: {
+                              ...prev.paymentMethods,
+                              credit: {
+                                ...prev.paymentMethods.credit,
+                                percentage: value
+                              }
+                            }
+                          }));
+                        }}
+                        className="w-full"
+                        placeholder="Ej: 3.67"
+                        step="0.01"
+                        min="0"
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-4">
+
+                {/* Tarjeta de Débito */}
+                <div className="border p-4 rounded-lg">
                   <TooltipLabel
-                    htmlFor="debitCardPercentage"
-                    label="Comisión Tarjeta de Débito (%)"
-                    tooltip="El porcentaje de comisión para transacciones con tarjeta de débito."
-                    required
+                    htmlFor="paymentMethods.debit.percentage"
+                    label="Tarjeta de Débito"
+                    tooltip="Configuración para pagos con tarjeta de débito"
+                    required={false}
                   />
-                  <Input
-                    id="debitCardPercentage"
-                    name="debitCardPercentage"
-                    type="number"
-                    value={formData.debitCardPercentage}
-                    onChange={handleInputChange}
-                    className="w-full"
-                    placeholder="Ej: 0.8"
-                    required
-                  />
+                  <div className="grid grid-cols-2 gap-4 mt-2">
+                    <div>
+                      <Label htmlFor="paymentMethods.debit.chargedTo">¿Quién absorbe?</Label>
+                      <Select
+                        value={formData.paymentMethods.debit.chargedTo}
+                        onValueChange={(value: "US" | "CLIENT" | "CONSUMER") => {
+                          handlePaymentMethodChargeToChange("debit", value)
+                        }}
+                      >
+                        <SelectTrigger id="paymentMethods.debit.chargedTo">
+                          <SelectValue placeholder="Seleccionar">
+                            {formData.paymentMethods.debit.chargedTo === "US" ? "Nosotros" : 
+                             formData.paymentMethods.debit.chargedTo === "CLIENT" ? "Cliente" : 
+                             formData.paymentMethods.debit.chargedTo === "CONSUMER" ? "Consumidor" : "Seleccionar"}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="US">Nosotros</SelectItem>
+                          <SelectItem value="CLIENT">Cliente</SelectItem>
+                          <SelectItem value="CONSUMER">Consumidor</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="paymentMethods.debit.percentage">Comisión (%)</Label>
+                      <Input
+                        id="paymentMethods.debit.percentage"
+                        name="paymentMethods.debit.percentage"
+                        type="number"
+                        value={formData.paymentMethods.debit.percentage}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setFormData(prev => ({
+                            ...prev,
+                            paymentMethods: {
+                              ...prev.paymentMethods,
+                              debit: {
+                                ...prev.paymentMethods.debit,
+                                percentage: value
+                              }
+                            }
+                          }));
+                        }}
+                        className="w-full"
+                        placeholder="Ej: 0.8"
+                        step="0.01"
+                        min="0"
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-4">
+
+                {/* Efectivo */}
+                <div className="border p-4 rounded-lg">
                   <TooltipLabel
-                    htmlFor="cashPercentage"
-                    label="Comisión Efectivo (%)"
-                    tooltip="El porcentaje de comisión para transacciones en efectivo."
-                    required
+                    htmlFor="paymentMethods.cash.percentage"
+                    label="Efectivo"
+                    tooltip="Configuración para pagos en efectivo"
+                    required={false}
                   />
-                  <Input
-                    id="cashPercentage"
-                    name="cashPercentage"
-                    type="number"
-                    value={formData.cashPercentage}
-                    onChange={handleInputChange}
-                    className="w-full"
-                    placeholder="Ej: 0.5"
-                    required
-                  />
+                  <div className="grid grid-cols-2 gap-4 mt-2">
+                    <div>
+                      <Label htmlFor="paymentMethods.cash.chargedTo">¿Quién absorbe?</Label>
+                      <Select
+                        value={formData.paymentMethods.cash.chargedTo}
+                        onValueChange={(value: "US" | "CLIENT" | "CONSUMER") => {
+                          handlePaymentMethodChargeToChange("cash", value)
+                        }}
+                      >
+                        <SelectTrigger id="paymentMethods.cash.chargedTo">
+                          <SelectValue placeholder="Seleccionar">
+                            {formData.paymentMethods.cash.chargedTo === "US" ? "Nosotros" : 
+                             formData.paymentMethods.cash.chargedTo === "CLIENT" ? "Cliente" : 
+                             formData.paymentMethods.cash.chargedTo === "CONSUMER" ? "Consumidor" : "Seleccionar"}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="US">Nosotros</SelectItem>
+                          <SelectItem value="CLIENT">Cliente</SelectItem>
+                          <SelectItem value="CONSUMER">Consumidor</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="paymentMethods.cash.percentage">Comisión (%)</Label>
+                      <Input
+                        id="paymentMethods.cash.percentage"
+                        name="paymentMethods.cash.percentage"
+                        type="number"
+                        value={formData.paymentMethods.cash.percentage}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setFormData(prev => ({
+                            ...prev,
+                            paymentMethods: {
+                              ...prev.paymentMethods,
+                              cash: {
+                                ...prev.paymentMethods.cash,
+                                percentage: value
+                              }
+                            }
+                          }));
+                        }}
+                        className="w-full"
+                        placeholder="Ej: 0.5"
+                        step="0.01"
+                        min="0"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </TabsContent>
@@ -468,7 +910,7 @@ export function QuotationForm() {
                     htmlFor="credentialsCost"
                     label="Costo de Credenciales"
                     tooltip="El costo total para credenciales y control de acceso."
-                    required
+                    required={false}
                   />
                   <Input
                     id="credentialsCost"
@@ -478,7 +920,6 @@ export function QuotationForm() {
                     onChange={handleInputChange}
                     className="w-full"
                     placeholder="Ingrese el costo"
-                    required
                   />
                 </div>
                 <div className="space-y-4">
@@ -486,7 +927,7 @@ export function QuotationForm() {
                     htmlFor="supervisorsCost"
                     label="Costo de Supervisores"
                     tooltip="El costo total para supervisores y personal de gestión."
-                    required
+                    required={false}
                   />
                   <Input
                     id="supervisorsCost"
@@ -496,7 +937,6 @@ export function QuotationForm() {
                     onChange={handleInputChange}
                     className="w-full"
                     placeholder="Ingrese el costo"
-                    required
                   />
                 </div>
                 <div className="space-y-4">
@@ -504,7 +944,7 @@ export function QuotationForm() {
                     htmlFor="operatorsCost"
                     label="Costo de Operadores"
                     tooltip="El costo total para operadores y personal en sitio."
-                    required
+                    required={false}
                   />
                   <Input
                     id="operatorsCost"
@@ -514,7 +954,6 @@ export function QuotationForm() {
                     onChange={handleInputChange}
                     className="w-full"
                     placeholder="Ingrese el costo"
-                    required
                   />
                 </div>
                 <div className="space-y-4">
@@ -522,7 +961,7 @@ export function QuotationForm() {
                     htmlFor="mobilityCost"
                     label="Costo de Movilidad"
                     tooltip="El costo total para transporte y logística."
-                    required
+                    required={false}
                   />
                   <Input
                     id="mobilityCost"
@@ -532,7 +971,6 @@ export function QuotationForm() {
                     onChange={handleInputChange}
                     className="w-full"
                     placeholder="Ingrese el costo"
-                    required
                   />
                 </div>
               </div>
@@ -545,7 +983,7 @@ export function QuotationForm() {
                 <Button
                   variant="outline"
                   onClick={() => {
-                    const tabs = ["event", "fees", "payments", "operational"]
+                    const tabs = ["event", "platform", "payments", "operational"]
                     const currentIndex = tabs.indexOf(activeTab)
                     setActiveTab(tabs[currentIndex - 1])
                   }}
@@ -556,7 +994,7 @@ export function QuotationForm() {
               {activeTab !== "operational" && (
                 <Button
                   onClick={() => {
-                    const tabs = ["event", "fees", "payments", "operational"]
+                    const tabs = ["event", "platform", "payments", "operational"]
                     const currentIndex = tabs.indexOf(activeTab)
                     setActiveTab(tabs[currentIndex + 1])
                   }}

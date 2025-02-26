@@ -13,6 +13,7 @@ const QuotationSchema = z.object({
   ticketPrice: z.number(),
   platformFee: z.number(),
   ticketingFee: z.number(),
+  serviceChargeFee: z.number(),
   additionalServices: z.number(),
   paywayFees: z.object({
     credit: z.number(),
@@ -68,17 +69,38 @@ export async function POST(request: Request) {
   // Verificar si el usuario tiene el rol adecuado
   console.log('User role:', session.user.role)
   
-  if (session.user.role !== "quoter" && session.user.role !== "admin") {
+  // Permitir a usuarios con rol ADMIN o USER (en mayúsculas, como está definido en el enum de Prisma)
+  if (session.user.role !== "ADMIN" && session.user.role !== "USER") {
     console.log('Invalid role:', session.user.role)
-    console.log('Invalid role:', session.user.role) // Log para depuración
     return NextResponse.json({ 
-      error: `Only quoters and admins can save quotations. Current role: ${session.user.role}` 
+      error: `Only authorized users can save quotations. Current role: ${session.user.role}` 
     }, { status: 401 })
   }
 
   try {
     const body = await request.json()
-    const validatedData = QuotationSchema.parse(body)
+    console.log('Raw request body:', body);
+    
+    // Asegurarnos de que ambos campos tengan el mismo valor
+    if (body.serviceChargeFee !== undefined && body.ticketingFee === undefined) {
+      body.ticketingFee = body.serviceChargeFee;
+    } else if (body.ticketingFee !== undefined && body.serviceChargeFee === undefined) {
+      body.serviceChargeFee = body.ticketingFee;
+    }
+    
+    // Asegurarnos de que ambos campos tengan un valor
+    if (body.ticketingFee === undefined) {
+      return NextResponse.json({
+        error: "ticketingFee is required"
+      }, { status: 400 });
+    }
+    
+    // Asignar el mismo valor a ambos campos
+    body.serviceChargeFee = body.ticketingFee;
+    
+    console.log('Body before validation:', body);
+    const validatedData = QuotationSchema.parse(body);
+    console.log('Validated data before save:', validatedData);
 
     const savedQuotation = await prisma.quotation.create({
       data: {
@@ -89,7 +111,7 @@ export async function POST(request: Request) {
           }
         }
       },
-    })
+    });
 
     return NextResponse.json(savedQuotation)
   } catch (error) {
