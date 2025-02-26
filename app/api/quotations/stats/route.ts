@@ -22,6 +22,7 @@ export async function GET() {
     // Calcular estadísticas
     const totalQuotations = quotations.length
     const totalRevenue = quotations.reduce((sum, q) => sum + q.totalRevenue, 0)
+    const totalCosts = quotations.reduce((sum, q) => sum + q.totalCosts, 0)
     const averageProfitability = quotations.length > 0
       ? quotations.reduce((sum, q) => sum + q.grossProfitability, 0) / quotations.length
       : 0
@@ -39,6 +40,7 @@ export async function GET() {
     return NextResponse.json({
       totalQuotations,
       totalRevenue,
+      totalCosts,
       averageProfitability,
       recentQuotations,
     })

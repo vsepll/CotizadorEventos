@@ -19,6 +19,7 @@ import {
 interface QuotationStats {
   totalQuotations: number
   totalRevenue: number
+  totalCosts: number
   averageProfitability: number
   recentQuotations: Array<{
     id: string
@@ -99,12 +100,15 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card className="p-6">
           <div className="flex items-center space-x-2">
-            <FileText className="h-4 w-4 text-muted-foreground" />
-            <h3 className="text-sm font-medium">Total de cotizaciones</h3>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-medium">Ingresos totales</h3>
           </div>
           <div className="mt-4">
             <p className="text-2xl font-bold">
-              {stats?.totalQuotations.toLocaleString()}
+              ${stats?.totalRevenue.toLocaleString("es-AR", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              })}
             </p>
           </div>
         </Card>
@@ -112,11 +116,11 @@ export default function DashboardPage() {
         <Card className="p-6">
           <div className="flex items-center space-x-2">
             <DollarSign className="h-4 w-4 text-muted-foreground" />
-            <h3 className="text-sm font-medium">Ingresos totales</h3>
+            <h3 className="text-sm font-medium">Costos totales</h3>
           </div>
           <div className="mt-4">
             <p className="text-2xl font-bold">
-              ${stats?.totalRevenue.toLocaleString("es-AR", {
+              ${stats?.totalCosts.toLocaleString("es-AR", {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2
               })}
@@ -141,12 +145,12 @@ export default function DashboardPage() {
 
         <Card className="p-6">
           <div className="flex items-center space-x-2">
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-            <h3 className="text-sm font-medium">Cotizaciones recientes</h3>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-medium">Total de cotizaciones</h3>
           </div>
           <div className="mt-4">
             <p className="text-2xl font-bold">
-              {stats?.recentQuotations.length.toLocaleString()}
+              {stats?.totalQuotations.toLocaleString()}
             </p>
           </div>
         </Card>
