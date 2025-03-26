@@ -1,19 +1,20 @@
 import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
+import { prisma } from "@/lib/prisma"
 import { PrismaClient } from "@prisma/client"
 import { z } from "zod"
+import { findUserById } from "@/lib/activity.js"
 
-const prisma = new PrismaClient()
+const prismaClient = new PrismaClient()
 
-// Schema para variación de ticket
+// Definir esquemas de validación
 const TicketVariationSchema = z.object({
   name: z.string(),
   price: z.number(),
   quantity: z.number()
 });
 
-// Schema para sector de ticket
 const TicketSectorSchema = z.object({
   name: z.string(),
   variations: z.array(TicketVariationSchema)
@@ -70,7 +71,7 @@ export async function GET() {
   }
 
   try {
-    const quotations = await prisma.quotation.findMany({
+    const quotations = await prismaClient.quotation.findMany({
       where: { userId: session.user.id },
       orderBy: { createdAt: "desc" },
       include: {
@@ -118,10 +119,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized - No session" }, { status: 401 })
   }
 
+  // Verificar si el usuario existe en nuestro sistema hardcodeado
+  const user = findUserById(session.user.id)
+  if (!user) {
+    console.log('User not found in hardcoded user list:', session.user.id)
+    return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 })
+  }
+
   // Verificar si el usuario tiene el rol adecuado
   console.log('User role:', session.user.role)
   
-  // Permitir a usuarios con rol ADMIN o USER (en mayúsculas, como está definido en el enum de Prisma)
+  // Permitir a usuarios con rol ADMIN o USER
   if (session.user.role !== "ADMIN" && session.user.role !== "USER") {
     console.log('Invalid role:', session.user.role)
     return NextResponse.json({ 
@@ -231,7 +239,7 @@ export async function POST(request: Request) {
       }
       
       // Crear la cotización con todos los campos requeridos por el modelo Prisma
-      const savedQuotation = await prisma.quotation.create({
+      const savedQuotation = await prismaClient.quotation.create({
         data: {
           name: body.name || `Cotización ${new Date().toLocaleDateString()}`,
           eventType: quotationData.eventType,
@@ -254,11 +262,7 @@ export async function POST(request: Request) {
           grossProfitability: grossProfitability, 
           palco4Cost: palco4Cost, 
           lineCost: lineCost,
-          user: {
-            connect: {
-              id: session.user.id
-            }
-          },
+          userId: session.user.id,
           // Crear sectores de tickets como relaciones anidadas
           ticketSectors: {
             create: ticketSectors.map((sector: TicketSector) => ({

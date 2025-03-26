@@ -1,13 +1,8 @@
 import { NextAuthOptions } from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials"
-import { PrismaAdapter } from "@next-auth/prisma-adapter"
-import { PrismaClient } from "@prisma/client"
-import bcrypt from "bcryptjs"
-
-const prisma = new PrismaClient()
+import { findUserByEmail, validatePassword } from "./activity.js"
 
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma),
   providers: [
     CredentialsProvider({
       name: "Credentials",
@@ -17,23 +12,28 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
+          console.log("Credenciales incompletas");
           return null
         }
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
-        })
+        console.log(`Buscando usuario: ${credentials.email}`);
+        // Buscar usuario en la lista hardcoded
+        const user = findUserByEmail(credentials.email)
 
         if (!user) {
+          console.log(`Usuario no encontrado: ${credentials.email}`);
           return null
         }
 
-        const isPasswordValid = await bcrypt.compare(credentials.password, user.password)
+        console.log(`Usuario encontrado: ${user.email}, verificando contraseña...`);
+        const isPasswordValid = validatePassword(credentials.password, user.password)
 
         if (!isPasswordValid) {
+          console.log("Contraseña inválida");
           return null
         }
 
+        console.log("Autenticación exitosa");
         return {
           id: user.id,
           email: user.email,
@@ -45,16 +45,19 @@ export const authOptions: NextAuthOptions = {
   ],
   session: {
     strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60,
   },
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
+        console.log("JWT callback - Usuario autenticado:", user);
         token.id = user.id
         token.role = user.role
       }
       return token
     },
     async session({ session, token }) {
+      console.log("Session callback - Creando sesión");
       if (session?.user) {
         session.user.id = token.id as string
         session.user.role = token.role as string
@@ -65,5 +68,5 @@ export const authOptions: NextAuthOptions = {
   pages: {
     signIn: "/login",
   },
-  debug: true,
+  debug: true, // Siempre activar modo debug para ver todos los logs
 } 
