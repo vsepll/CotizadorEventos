@@ -28,6 +28,7 @@ import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { CustomOperationalCosts } from "@/components/custom-operational-costs"
+import { TicketSectorForm } from "@/components/ticket-sector-form"
 
 interface TooltipLabelProps {
   htmlFor: string;
@@ -61,14 +62,34 @@ interface FormData {
     };
   };
   credentialsCost: string;
-  supervisorsCost: string;
-  operatorsCost: string;
-  mobilityCost: string;
+  employees: Array<{
+    employeeTypeId: string;
+    quantity: string;
+    days: string;
+  }>;
+  mobilityKilometers: string;
+  numberOfTolls: string;
+  tollsCost: string;
   customOperationalCosts: Array<{
-    id: string
-    name: string
-    amount: number
-  }>
+    id: string;
+    name: string;
+    amount: number;
+  }>;
+  ticketSectors: Array<{
+    name: string;
+    variations: Array<{
+      name: string;
+      price: number;
+      quantity: number;
+    }>;
+  }>;
+}
+
+interface EmployeeType {
+  id: string;
+  name: string;
+  isOperator: boolean;
+  costPerDay: number;
 }
 
 export function QuotationForm() {
@@ -86,16 +107,40 @@ export function QuotationForm() {
   // Manejar el estado del formulario con valores guardados o iniciales
   const [formData, setFormData] = useState<FormData>(() => {
     try {
-      // Intentar recuperar datos guardados de localStorage
       const savedData = localStorage.getItem('quotationFormData')
       if (savedData) {
-        return JSON.parse(savedData)
+        const parsedData = JSON.parse(savedData)
+        return {
+          ...parsedData,
+          platform: {
+            name: parsedData.platform?.name || "TICKET_PLUS",
+            percentage: parsedData.platform?.percentage || ""
+          },
+          paymentMethods: {
+            credit: {
+              percentage: parsedData.paymentMethods?.credit?.percentage || "",
+              chargedTo: parsedData.paymentMethods?.credit?.chargedTo || "CONSUMER"
+            },
+            debit: {
+              percentage: parsedData.paymentMethods?.debit?.percentage || "",
+              chargedTo: parsedData.paymentMethods?.debit?.chargedTo || "CONSUMER"
+            },
+            cash: {
+              percentage: parsedData.paymentMethods?.cash?.percentage || "",
+              chargedTo: parsedData.paymentMethods?.cash?.chargedTo || "CONSUMER"
+            }
+          },
+          employees: parsedData.employees || [],
+          mobilityKilometers: parsedData.mobilityKilometers || "",
+          numberOfTolls: parsedData.numberOfTolls || "",
+          tollsCost: parsedData.tollsCost || "",
+          ticketSectors: parsedData.ticketSectors || []
+        }
       }
     } catch (error) {
       console.error('Error loading saved form data:', error)
     }
     
-    // Si no hay datos guardados, usar valores iniciales vacíos
     return {
       eventType: "",
       totalAmount: "",
@@ -121,10 +166,12 @@ export function QuotationForm() {
         }
       },
       credentialsCost: "",
-      supervisorsCost: "",
-      operatorsCost: "",
-      mobilityCost: "",
-      customOperationalCosts: []
+      employees: [],
+      mobilityKilometers: "",
+      numberOfTolls: "",
+      tollsCost: "",
+      customOperationalCosts: [],
+      ticketSectors: []
     }
   })
 
@@ -132,6 +179,8 @@ export function QuotationForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [quotationName, setQuotationName] = useState("")
+  const [employeeTypes, setEmployeeTypes] = useState<EmployeeType[]>([])
+  const [ticketSectors, setTicketSectors] = useState([])
 
   // Guardar la pestaña activa en localStorage cuando cambia
   useEffect(() => {
@@ -178,9 +227,10 @@ export function QuotationForm() {
               }
             },
             credentialsCost: data.defaultCredentialsCost.toString(),
-            supervisorsCost: data.defaultSupervisorsCost.toString(),
-            operatorsCost: data.defaultOperatorsCost.toString(),
-            mobilityCost: data.defaultMobilityCost.toString(),
+            employees: [],
+            mobilityKilometers: data.defaultMobilityCost.toString(),
+            numberOfTolls: data.defaultNumberOfTolls.toString(),
+            tollsCost: data.defaultTollsCost.toString(),
           }))
         }
       } catch (error) {
@@ -195,6 +245,30 @@ export function QuotationForm() {
     
     fetchGlobalParameters()
   }, [toast])
+
+  // Agregar el efecto para cargar los tipos de empleados
+  useEffect(() => {
+    const fetchEmployeeTypes = async () => {
+      try {
+        const response = await fetch("/api/employee-types");
+        if (!response.ok) {
+          throw new Error("Failed to fetch employee types");
+        }
+        const data = await response.json();
+        console.log("Tipos de empleados cargados:", data);
+        setEmployeeTypes(data);
+      } catch (error) {
+        console.error("Error fetching employee types:", error);
+        toast({
+          title: "Error",
+          description: "No se pudieron cargar los tipos de personal. Por favor, intente de nuevo.",
+          variant: "destructive",
+        });
+      }
+    };
+
+    fetchEmployeeTypes();
+  }, [toast]);
 
   // Función mejorada para limpiar datos
   const clearFormData = () => {
@@ -226,10 +300,12 @@ export function QuotationForm() {
         }
       },
       credentialsCost: "",
-      supervisorsCost: "",
-      operatorsCost: "",
-      mobilityCost: "",
-      customOperationalCosts: []
+      employees: [],
+      mobilityKilometers: "",
+      numberOfTolls: "",
+      tollsCost: "",
+      customOperationalCosts: [],
+      ticketSectors: []
     })
   }
 
@@ -337,70 +413,151 @@ export function QuotationForm() {
     }))
   }
 
+  const handleTicketSectorsChange = (newTicketSectors: Array<{
+    name: string;
+    variations: Array<{
+      name: string;
+      price: number;
+      quantity: number;
+    }>;
+  }>) => {
+    setFormData(prev => ({
+      ...prev,
+      ticketSectors: newTicketSectors
+    }))
+  }
+
+  // Añadir una función para adaptar los resultados al formato esperado por QuotationResults
+  const adaptResults = (apiResults: any) => {
+    // Primero, hacemos una copia profunda para evitar modificar el original
+    const result = JSON.parse(JSON.stringify(apiResults));
+    
+    // Nos aseguramos de que la estructura de operationalCosts sea correcta
+    if (result.operationalCosts) {
+      // Si no existe employees pero existen supervisors/operators, calculamos employees
+      if (result.operationalCosts.supervisors !== undefined && 
+          result.operationalCosts.operators !== undefined && 
+          result.operationalCosts.employees === undefined) {
+        result.operationalCosts.employees = 
+          result.operationalCosts.supervisors + result.operationalCosts.operators;
+      } 
+      // Si existe employees pero no existen supervisors/operators, los calculamos
+      else if (result.operationalCosts.employees !== undefined && 
+               (result.operationalCosts.supervisors === undefined || 
+                result.operationalCosts.operators === undefined)) {
+        result.operationalCosts.supervisors = result.operationalCosts.employees / 2;
+        result.operationalCosts.operators = result.operationalCosts.employees / 2;
+      }
+      // Si no existe ninguno, los inicializamos a 0
+      else if (result.operationalCosts.employees === undefined) {
+        result.operationalCosts.employees = 0;
+        result.operationalCosts.supervisors = 0;
+        result.operationalCosts.operators = 0;
+      }
+    }
+    
+    return result;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
 
     try {
-      // Función auxiliar para convertir strings vacíos o inválidos a 0
-      const safeNumber = (value: string): number => {
-        const num = Number(value);
-        return isNaN(num) ? 0 : num;
-      };
+      // Calcular el totalAmount basado en los sectores de tickets
+      const totalAmount = formData.ticketSectors.reduce((total, sector) => {
+        return total + sector.variations.reduce((sectorTotal, variation) => {
+          return sectorTotal + (variation.price * variation.quantity)
+        }, 0)
+      }, 0)
 
-      const data = {
-        eventType: formData.eventType,
-        totalAmount: safeNumber(formData.totalAmount),
-        ticketPrice: safeNumber(formData.ticketPrice),
+      // Calcular el ticketPrice promedio
+      const totalTickets = formData.ticketSectors.reduce((total, sector) => {
+        return total + sector.variations.reduce((sectorTotal, variation) => {
+          return sectorTotal + variation.quantity
+        }, 0)
+      }, 0)
+
+      const averageTicketPrice = totalTickets > 0 ? totalAmount / totalTickets : 0
+
+      const quotationData = {
+        ...formData,
+        totalAmount: Number(totalAmount),
+        ticketPrice: Number(averageTicketPrice),
+        // Asegurarse de que todos los valores numéricos sean números
         platform: {
-          name: formData.platform.name,
-          percentage: safeNumber(formData.platform.percentage)
+          ...formData.platform,
+          percentage: Number(formData.platform.percentage)
         },
-        serviceCharge: safeNumber(formData.serviceCharge),
-        additionalServicesPercentage: safeNumber(formData.additionalServicesPercentage),
+        serviceCharge: Number(formData.serviceCharge),
+        additionalServicesPercentage: Number(formData.additionalServicesPercentage),
         paymentMethods: {
           credit: {
-            percentage: safeNumber(formData.paymentMethods.credit.percentage),
-            chargedTo: formData.paymentMethods.credit.chargedTo
+            ...formData.paymentMethods.credit,
+            percentage: Number(formData.paymentMethods.credit.percentage)
           },
           debit: {
-            percentage: safeNumber(formData.paymentMethods.debit.percentage),
-            chargedTo: formData.paymentMethods.debit.chargedTo
+            ...formData.paymentMethods.debit,
+            percentage: Number(formData.paymentMethods.debit.percentage)
           },
           cash: {
-            percentage: safeNumber(formData.paymentMethods.cash.percentage),
-            chargedTo: formData.paymentMethods.cash.chargedTo
+            ...formData.paymentMethods.cash,
+            percentage: Number(formData.paymentMethods.cash.percentage)
           }
         },
-        credentialsCost: safeNumber(formData.credentialsCost),
-        supervisorsCost: safeNumber(formData.supervisorsCost),
-        operatorsCost: safeNumber(formData.operatorsCost),
-        mobilityCost: safeNumber(formData.mobilityCost),
-        customOperationalCosts: formData.customOperationalCosts.map(cost => ({
-          id: cost.id,
-          name: cost.name,
-          amount: safeNumber(cost.amount)
+        credentialsCost: Number(formData.credentialsCost),
+        employees: formData.employees.map(emp => ({
+          ...emp,
+          quantity: Number(emp.quantity),
+          days: Number(emp.days)
         })),
+        mobilityKilometers: Number(formData.mobilityKilometers),
+        numberOfTolls: Number(formData.numberOfTolls),
+        tollsCost: Number(formData.tollsCost),
+        customOperationalCosts: formData.customOperationalCosts.map(cost => ({
+          ...cost,
+          amount: Number(cost.amount)
+        }))
       }
 
+      console.log('Sending quotation data for calculation:', quotationData)
+
+      // Primero calculamos la cotización en lugar de guardarla directamente
       const response = await fetch("/api/calculate-quotation", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(quotationData),
       })
 
-      const responseData = await response.json()
-
       if (!response.ok) {
-        throw new Error(responseData.error || "Failed to calculate quotation")
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Error calculando cotización")
       }
 
-      setResults(responseData)
+      // Obtener los resultados calculados
+      const calculationResults = await response.json()
+      
+      // Actualizar el estado con los resultados calculados para mostrar el componente QuotationResults
+      setResults(adaptResults(calculationResults))
+      
+      toast({
+        title: "Éxito",
+        description: "Cotización calculada correctamente",
+      })
+      
+      // Actualizar formData con los valores calculados
+      setFormData(prev => ({
+        ...prev,
+        totalAmount: String(totalAmount),
+        ticketPrice: String(averageTicketPrice),
+      }))
     } catch (error) {
       console.error("Error calculating quotation:", error)
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "An error occurred while calculating the quotation",
+        description: error instanceof Error ? error.message : "Error al calcular la cotización",
         variant: "destructive",
       })
     } finally {
@@ -421,19 +578,78 @@ export function QuotationForm() {
 
     setIsSaving(true)
     try {
+      // Calculate total ticket quantity from sectors
+      const totalTicketsQuantity = formData.ticketSectors.reduce((total, sector) => {
+        return total + sector.variations.reduce((sectorTotal, variation) => {
+          return sectorTotal + variation.quantity;
+        }, 0);
+      }, 0);
+
+      // Prepare form data for submission - convert string values to numbers as needed
+      const formDataForSubmission = {
+        // Include form input data
+        eventType: formData.eventType,
+        totalAmount: Number(formData.totalAmount), // This is the total monetary value
+        ticketPrice: Number(formData.ticketPrice),
+        // Add explicit ticket quantity field
+        ticketQuantity: totalTicketsQuantity,
+        platform: {
+          name: formData.platform.name,
+          percentage: Number(formData.platform.percentage)
+        },
+        serviceCharge: Number(formData.serviceCharge),
+        additionalServicesPercentage: Number(formData.additionalServicesPercentage) || 0,
+        paymentMethods: {
+          credit: {
+            percentage: Number(formData.paymentMethods.credit.percentage) || 0,
+            chargedTo: formData.paymentMethods.credit.chargedTo || "CONSUMER"
+          },
+          debit: {
+            percentage: Number(formData.paymentMethods.debit.percentage) || 0,
+            chargedTo: formData.paymentMethods.debit.chargedTo || "CONSUMER"
+          },
+          cash: {
+            percentage: Number(formData.paymentMethods.cash.percentage) || 0,
+            chargedTo: formData.paymentMethods.cash.chargedTo || "CONSUMER"
+          }
+        },
+        credentialsCost: Number(formData.credentialsCost) || 0,
+        employees: formData.employees.map(emp => ({
+          employeeTypeId: emp.employeeTypeId,
+          quantity: Number(emp.quantity),
+          days: Number(emp.days)
+        })),
+        mobilityKilometers: Number(formData.mobilityKilometers) || 0,
+        numberOfTolls: Number(formData.numberOfTolls) || 0,
+        tollsCost: Number(formData.tollsCost) || 0,
+        customOperationalCosts: formData.customOperationalCosts.map(cost => ({
+          id: cost.id,
+          name: cost.name,
+          amount: Number(cost.amount)
+        })),
+        ticketSectors: formData.ticketSectors.map(sector => ({
+          name: sector.name,
+          variations: sector.variations.map(variation => ({
+            name: variation.name,
+            price: Number(variation.price),
+            quantity: Number(variation.quantity)
+          }))
+        })),
+        // Include the calculation results
+        ...results,
+        // Override with the user-provided name
+        name: quotationName,
+      };
+
+      console.log('Sending complete quotation data:', formDataForSubmission);
+
       const response = await fetch("/api/quotations", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         credentials: "include",
-        body: JSON.stringify({
-          name: quotationName,
-          eventType: formData.eventType,
-          totalAmount: Number.parseFloat(formData.totalAmount),
-          ticketPrice: Number.parseFloat(formData.ticketPrice),
-          ...results,
-        }),
+        body: JSON.stringify(formDataForSubmission),
       })
 
       if (!response.ok) {
@@ -489,11 +705,30 @@ export function QuotationForm() {
       return !isNaN(num) && num >= 0
     }
 
+    // Validar que haya al menos un sector de tickets con variaciones válidas
+    const hasValidTicketSectors = () => {
+      if (!formData.ticketSectors || formData.ticketSectors.length === 0) {
+        return false;
+      }
+
+      return formData.ticketSectors.some(sector => {
+        // Verificar que el sector tenga un nombre
+        if (!sector.name.trim()) return false;
+        
+        // Verificar que tenga variaciones
+        if (!sector.variations || sector.variations.length === 0) return false;
+        
+        // Verificar que al menos una variación tenga nombre, precio y cantidad
+        return sector.variations.some(variation => 
+          variation.name.trim() && variation.price > 0 && variation.quantity > 0
+        );
+      });
+    };
+
     // Campos obligatorios básicos
     const requiredFieldsValid = 
       formData.eventType &&
-      isValidNumber(formData.totalAmount) &&
-      isValidNumber(formData.ticketPrice) &&
+      hasValidTicketSectors() &&
       formData.platform.name &&
       isValidNumber(formData.platform.percentage) &&
       isValidNumber(formData.serviceCharge)
@@ -531,9 +766,7 @@ export function QuotationForm() {
 
     const operationalCostsValid = 
       validateOptionalNumber(formData.credentialsCost) &&
-      validateOptionalNumber(formData.supervisorsCost) &&
-      validateOptionalNumber(formData.operatorsCost) &&
-      validateOptionalNumber(formData.mobilityCost)
+      validateOptionalNumber(formData.tollsCost)
 
     // Validar servicios adicionales
     const additionalServicesValid = validateOptionalNumber(formData.additionalServicesPercentage)
@@ -582,13 +815,17 @@ export function QuotationForm() {
         </CardHeader>
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid grid-cols-4 gap-4 p-1">
+            <TabsList className="grid grid-cols-5 gap-4 p-1">
               <TabsTrigger value="event" className="flex items-center space-x-2">
-                <Building2 className="h-4 w-4" />
+                <Calculator className="h-4 w-4" />
                 <span>Evento</span>
               </TabsTrigger>
-              <TabsTrigger value="platform" className="flex items-center space-x-2">
+              <TabsTrigger value="tickets" className="flex items-center space-x-2">
                 <Percent className="h-4 w-4" />
+                <span>Tickets</span>
+              </TabsTrigger>
+              <TabsTrigger value="platform" className="flex items-center space-x-2">
+                <Building2 className="h-4 w-4" />
                 <span>Plataforma y Servicios</span>
               </TabsTrigger>
               <TabsTrigger value="payments" className="flex items-center space-x-2">
@@ -602,7 +839,7 @@ export function QuotationForm() {
             </TabsList>
 
             <TabsContent value="event" className="space-y-6">
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 gap-6">
                 <div className="space-y-4">
                   <TooltipLabel
                     htmlFor="eventType"
@@ -622,43 +859,24 @@ export function QuotationForm() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-4">
-                  <TooltipLabel
-                    htmlFor="totalAmount"
-                    label="Cantidad de Tickets"
-                    tooltip="Cantidad total de tickets a vender"
-                    required
-                  />
-                  <Input
-                    id="totalAmount"
-                    name="totalAmount"
-                    type="number"
-                    value={formData.totalAmount}
-                    onChange={handleInputChange}
-                    className="w-full"
-                    placeholder="Ej: 1000"
-                    required
-                  />
-                </div>
-                <div className="space-y-4">
-                  <TooltipLabel
-                    htmlFor="ticketPrice"
-                    label="Precio por Ticket"
-                    tooltip="Precio de venta por ticket"
-                    required
-                  />
-                  <Input
-                    id="ticketPrice"
-                    name="ticketPrice"
-                    type="number"
-                    value={formData.ticketPrice}
-                    onChange={handleInputChange}
-                    className="w-full"
-                    placeholder="Ej: 50000"
-                    required
-                  />
-                </div>
               </div>
+            </TabsContent>
+
+            <TabsContent value="tickets">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Tipos de Tickets</CardTitle>
+                  <CardDescription>
+                    Configura los diferentes tipos y precios de tickets para tu evento
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <TicketSectorForm 
+                    initialSectors={formData.ticketSectors}
+                    onChange={handleTicketSectorsChange}
+                  />
+                </CardContent>
+              </Card>
             </TabsContent>
 
             <TabsContent value="platform" className="space-y-6">
@@ -927,72 +1145,185 @@ export function QuotationForm() {
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Costos Operativos</h3>
                 
-                {/* Costos operativos fijos */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <TooltipLabel
-                      htmlFor="credentialsCost"
-                      label="Costo de Credenciales"
-                      tooltip="Costo total de las credenciales para el evento"
-                    />
-                    <Input
-                      id="credentialsCost"
-                      type="number"
-                      value={formData.credentialsCost}
-                      onChange={handleInputChange}
-                      placeholder="0.00"
-                    />
-                  </div>
-                  <div>
-                    <TooltipLabel
-                      htmlFor="supervisorsCost"
-                      label="Costo de Supervisores"
-                      tooltip="El costo total para supervisores y personal de gestión."
-                      required={false}
-                    />
-                    <Input
-                      id="supervisorsCost"
-                      name="supervisorsCost"
-                      type="number"
-                      value={formData.supervisorsCost}
-                      onChange={handleInputChange}
-                      className="w-full"
-                      placeholder="Ingrese el costo"
-                    />
-                  </div>
-                  <div>
-                    <TooltipLabel
-                      htmlFor="operatorsCost"
-                      label="Costo de Operadores"
-                      tooltip="El costo total para operadores y personal en sitio."
-                      required={false}
-                    />
-                    <Input
-                      id="operatorsCost"
-                      name="operatorsCost"
-                      type="number"
-                      value={formData.operatorsCost}
-                      onChange={handleInputChange}
-                      className="w-full"
-                      placeholder="Ingrese el costo"
-                    />
-                  </div>
-                  <div>
-                    <TooltipLabel
-                      htmlFor="mobilityCost"
-                      label="Costo de Movilidad"
-                      tooltip="El costo total para transporte y logística."
-                      required={false}
-                    />
-                    <Input
-                      id="mobilityCost"
-                      name="mobilityCost"
-                      type="number"
-                      value={formData.mobilityCost}
-                      onChange={handleInputChange}
-                      className="w-full"
-                      placeholder="Ingrese el costo"
-                    />
+                {/* Empleados */}
+                <div className="space-y-4">
+                  <h4 className="font-medium">Personal</h4>
+                  
+                  {/* Mostrar mensaje si no hay tipos de personal disponibles */}
+                  {employeeTypes.length === 0 && (
+                    <div className="text-yellow-600 p-2 bg-yellow-50 rounded mb-4">
+                      No hay tipos de personal configurados. Por favor, agregue tipos de personal en la configuración.
+                    </div>
+                  )}
+                  
+                  {formData.employees.map((employee, index) => (
+                    <div key={index} className="grid grid-cols-3 gap-4 p-4 border rounded-lg">
+                      <div>
+                        <Label>Tipo de Personal</Label>
+                        <Select
+                          value={employee.employeeTypeId}
+                          onValueChange={(value) => {
+                            const newEmployees = [...formData.employees];
+                            newEmployees[index].employeeTypeId = value;
+                            setFormData(prev => ({
+                              ...prev,
+                              employees: newEmployees
+                            }));
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar tipo" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {employeeTypes.length > 0 ? (
+                              employeeTypes.map((type) => (
+                                <SelectItem key={type.id} value={type.id}>
+                                  {type.name} (${type.costPerDay}/día)
+                                </SelectItem>
+                              ))
+                            ) : (
+                              <SelectItem value="no-types" disabled>
+                                No hay tipos disponibles
+                              </SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Cantidad</Label>
+                        <Input
+                          type="number"
+                          value={employee.quantity}
+                          onChange={(e) => {
+                            const newEmployees = [...formData.employees];
+                            newEmployees[index].quantity = e.target.value;
+                            setFormData(prev => ({
+                              ...prev,
+                              employees: newEmployees
+                            }));
+                          }}
+                          min="1"
+                        />
+                      </div>
+                      <div>
+                        <Label>Días</Label>
+                        <Input
+                          type="number"
+                          value={employee.days}
+                          onChange={(e) => {
+                            const newEmployees = [...formData.employees];
+                            newEmployees[index].days = e.target.value;
+                            setFormData(prev => ({
+                              ...prev,
+                              employees: newEmployees
+                            }));
+                          }}
+                          min="1"
+                        />
+                      </div>
+                      <Button
+                        variant="destructive"
+                        className="col-span-3"
+                        onClick={() => {
+                          setFormData(prev => ({
+                            ...prev,
+                            employees: prev.employees.filter((_, i) => i !== index)
+                          }));
+                        }}
+                      >
+                        Eliminar
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    variant="outline"
+                    type="button"
+                    onClick={() => {
+                      // Se añade type="button" para evitar que se envíe el formulario al hacer clic
+                      try {
+                        console.log("Clicked Agregar Personal button");
+                        
+                        // Valor por defecto si no hay tipos de empleado
+                        const defaultEmployeeTypeId = "temp-id-123";
+                        console.log("Empleados actuales:", formData.employees);
+                        
+                        // Creamos el nuevo arreglo directamente en lugar de usar setState con callback
+                        const newEmployees = [
+                          ...formData.employees,
+                          {
+                            employeeTypeId: defaultEmployeeTypeId,
+                            quantity: "1",
+                            days: "1"
+                          }
+                        ];
+                        console.log("Nuevos empleados:", newEmployees);
+                        
+                        // Actualizar el estado con los nuevos empleados
+                        setFormData({
+                          ...formData,
+                          employees: newEmployees
+                        });
+                      } catch (error) {
+                        console.error("Error al agregar personal:", error);
+                      }
+                    }}
+                  >
+                    Agregar Personal
+                  </Button>
+                </div>
+
+                {/* Movilidad */}
+                <div className="space-y-4">
+                  <h4 className="font-medium">Movilidad</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <TooltipLabel
+                        htmlFor="mobilityKilometers"
+                        label="Kilómetros (ida y vuelta)"
+                        tooltip="Distancia total del recorrido en kilómetros"
+                      />
+                      <Input
+                        id="mobilityKilometers"
+                        name="mobilityKilometers"
+                        type="number"
+                        value={formData.mobilityKilometers}
+                        onChange={handleInputChange}
+                        min="0"
+                        placeholder="0"
+                      />
+                    </div>
+                    <div>
+                      <TooltipLabel
+                        htmlFor="numberOfTolls"
+                        label="Cantidad de Peajes"
+                        tooltip="Número total de peajes en el recorrido"
+                      />
+                      <Input
+                        id="numberOfTolls"
+                        name="numberOfTolls"
+                        type="number"
+                        value={formData.numberOfTolls}
+                        onChange={handleInputChange}
+                        min="0"
+                        placeholder="0"
+                      />
+                    </div>
+                    <div>
+                      <TooltipLabel
+                        htmlFor="tollsCost"
+                        label="Costo por Peaje"
+                        tooltip="Costo promedio por peaje"
+                      />
+                      <Input
+                        id="tollsCost"
+                        name="tollsCost"
+                        type="number"
+                        value={formData.tollsCost}
+                        onChange={handleInputChange}
+                        min="0"
+                        placeholder="0.00"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -1011,7 +1342,7 @@ export function QuotationForm() {
                 <Button
                   variant="outline"
                   onClick={() => {
-                    const tabs = ["event", "platform", "payments", "operational"]
+                    const tabs = ["event", "tickets", "platform", "payments", "operational"]
                     const currentIndex = tabs.indexOf(activeTab)
                     setActiveTab(tabs[currentIndex - 1])
                   }}
@@ -1022,7 +1353,7 @@ export function QuotationForm() {
               {activeTab !== "operational" && (
                 <Button
                   onClick={() => {
-                    const tabs = ["event", "platform", "payments", "operational"]
+                    const tabs = ["event", "tickets", "platform", "payments", "operational"]
                     const currentIndex = tabs.indexOf(activeTab)
                     setActiveTab(tabs[currentIndex + 1])
                   }}

@@ -40,5 +40,36 @@ export async function getCachedGlobalSettings() {
   return getCachedGlobalSettings();
 }
 
+// Función para invalidar el caché de cotizaciones
+export async function invalidateQuotationCache() {
+  try {
+    // Obtener todas las claves que comienzan con 'quotation:'
+    const keys = await redis.keys('quotation:*');
+    
+    if (keys.length > 0) {
+      // Eliminar todas las claves encontradas
+      await redis.del(...keys);
+      console.log(`Caché de cotizaciones invalidado: ${keys.length} entradas eliminadas`);
+    } else {
+      console.log('No se encontraron cotizaciones en caché para invalidar');
+    }
+    
+    // Actualizar la versión de los parámetros globales
+    const timestamp = Date.now();
+    await redis.set('global_parameters_version', timestamp);
+    
+    return { success: true, keysDeleted: keys.length, newVersion: timestamp };
+  } catch (error) {
+    console.error('Error al invalidar el caché de cotizaciones:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Error desconocido' };
+  }
+}
+
+// Función para obtener la versión actual de los parámetros globales
+export async function getGlobalParametersVersion() {
+  const version = await redis.get('global_parameters_version');
+  return version ? parseInt(version) : null;
+}
+
 export default redis;
 
