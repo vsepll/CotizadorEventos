@@ -23,8 +23,20 @@ async function getMonthlyFixedCosts() {
 export async function GET(request: Request) {
   const session = await getServerSession(authOptions)
 
+  // Verificar si hay sesión y usuario autenticado
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+    return NextResponse.json(
+      { error: "No autorizado - Debe iniciar sesión" },
+      { status: 401 }
+    )
+  }
+
+  // Verificar si el usuario tiene permisos de administrador
+  if (session.user.role !== "ADMIN") {
+    return NextResponse.json(
+      { error: "No autorizado - Se requiere rol de administrador" },
+      { status: 403 }
+    )
   }
 
   try {

@@ -74,6 +74,13 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
   if (!results) {
     return null
   }
+  
+  console.log('Datos recibidos en QuotationResults:', {
+    ticketingFee: results.ticketingFee,
+    totalRevenue: results.totalRevenue,
+    ticketSectors: results.ticketSectors,
+    completeResults: results
+  });
 
   const COLOR_PALETTE = useMemo(() => ({
     revenue: {
@@ -94,22 +101,36 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
     }
   }), []);
 
-  const revenueData = useMemo(() => [
-    { 
-      name: "Cargo por Servicio", 
-      value: Number(results.ticketingFee) || 0,
-      color: COLOR_PALETTE.revenue.service 
-    },
-    { 
-      name: "Servicios Adicionales", 
-      value: Number(results.additionalServices) || 0,
-      color: COLOR_PALETTE.revenue.additional 
-    },
-  ], [results.ticketingFee, results.additionalServices, COLOR_PALETTE]);
+  const revenueData = useMemo(() => {
+    console.log('Construyendo revenueData con:', {
+      ticketingFee: results.ticketingFee,
+      additionalServices: results.additionalServices
+    });
+    
+    return [
+      { 
+        name: "Cargo por Servicio", 
+        value: Number(results.ticketingFee) || 0,
+        color: COLOR_PALETTE.revenue.service 
+      },
+      { 
+        name: "Servicios Adicionales", 
+        value: Number(results.additionalServices) || 0,
+        color: COLOR_PALETTE.revenue.additional 
+      },
+    ];
+  }, [results.ticketingFee, results.additionalServices, COLOR_PALETTE]);
 
   const costsData = useMemo(() => {
     // Make sure we have valid data
     const validatedResults = results || {};
+    
+    console.log('Construyendo costsData con:', {
+      palco4Cost: validatedResults.palco4Cost,
+      paywayFees: validatedResults.paywayFees,
+      lineCost: validatedResults.lineCost,
+      operationalCosts: validatedResults.operationalCosts
+    });
     
     // Create array with all possible cost items
     const allCosts = [
@@ -388,11 +409,10 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
                   outerRadius={80}
                   paddingAngle={2}
                   dataKey="value"
-                  isAnimationActive={false}
+                  isAnimationActive={true}
                   animationBegin={0}
-                  animationDuration={0}
-                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                  labelLine={false}
+                  animationDuration={800}
+                  labelLine={true}
                 >
                   {data.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
@@ -454,9 +474,9 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
                   dataKey="value" 
                   fill="#8884d8"
                   radius={[4, 4, 4, 4]} 
-                  isAnimationActive={false}
+                  isAnimationActive={true}
                   animationBegin={0}
-                  animationDuration={0}
+                  animationDuration={800}
                 >
                   {data.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />

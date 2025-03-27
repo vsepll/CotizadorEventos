@@ -208,17 +208,21 @@ export default function DashboardPage() {
             <BarChart3 className="h-4 w-4" />
             <span>Resumen</span>
           </TabsTrigger>
-          <TabsTrigger value="profitability" className="flex items-center space-x-2">
-            <ChartPieIcon className="h-4 w-4" />
-            <span>Rentabilidad Global</span>
-          </TabsTrigger>
+          {session?.user?.role === "ADMIN" && (
+            <TabsTrigger value="profitability" className="flex items-center space-x-2">
+              <ChartPieIcon className="h-4 w-4" />
+              <span>Rentabilidad Global</span>
+            </TabsTrigger>
+          )}
         </TabsList>
         <TabsContent value="overview" className="space-y-4">
           {renderOverview()}
         </TabsContent>
-        <TabsContent value="profitability" className="space-y-4">
-          <GlobalProfitability />
-        </TabsContent>
+        {session?.user?.role === "ADMIN" && (
+          <TabsContent value="profitability" className="space-y-4">
+            <GlobalProfitability />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   )

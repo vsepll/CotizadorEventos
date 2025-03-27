@@ -12,6 +12,8 @@ interface TicketVariation {
   name: string;
   price: number;
   quantity: number;
+  serviceCharge: number;
+  serviceChargeType: "fixed" | "percentage";
 }
 
 interface TicketSector {
@@ -26,6 +28,8 @@ interface TicketSectorFormProps {
       name: string;
       price: number;
       quantity: number;
+      serviceCharge: number;
+      serviceChargeType: "fixed" | "percentage";
     }>;
   }>;
   onChange?: (sectors: Array<{
@@ -34,6 +38,8 @@ interface TicketSectorFormProps {
       name: string;
       price: number;
       quantity: number;
+      serviceCharge: number;
+      serviceChargeType: "fixed" | "percentage";
     }>;
   }>) => void;
 }
@@ -41,7 +47,13 @@ interface TicketSectorFormProps {
 export function TicketSectorForm({ initialSectors, onChange }: TicketSectorFormProps) {
   const [sectors, setSectors] = useState<TicketSector[]>(initialSectors || [{
     name: '',
-    variations: [{ name: '', price: 0, quantity: 0 }]
+    variations: [{ 
+      name: '', 
+      price: 0, 
+      quantity: 0,
+      serviceCharge: 0,
+      serviceChargeType: "fixed"
+    }]
   }]);
 
   const [validationErrors, setValidationErrors] = useState<{
@@ -115,10 +127,19 @@ export function TicketSectorForm({ initialSectors, onChange }: TicketSectorFormP
       }
     });
 
-    setValidationErrors({
-      sectors: sectorErrors,
-      variations: variationErrors
-    });
+    // Compara si los errores han cambiado antes de actualizar el estado
+    const isEqual = (a, b) => {
+      if (a.length !== b.length) return false;
+      return JSON.stringify(a) === JSON.stringify(b);
+    };
+
+    if (!isEqual(sectorErrors, validationErrors.sectors) || 
+        !isEqual(variationErrors, validationErrors.variations)) {
+      setValidationErrors({
+        sectors: sectorErrors,
+        variations: variationErrors
+      });
+    }
 
     // Retornar true si no hay errores
     return sectorErrors.length === 0 && variationErrors.length === 0;
@@ -129,10 +150,12 @@ export function TicketSectorForm({ initialSectors, onChange }: TicketSectorFormP
     if (onChange) {
       onChange(sectors);
     }
-    
-    // Validar los sectores cuando cambien
-    validateSectors();
   }, [sectors, onChange]);
+  
+  // Validar sectores solo cuando sea necesario
+  useEffect(() => {
+    validateSectors();
+  }, [sectors]);
 
   // Verificar si un sector tiene error de nombre
   const hasSectorNameError = (sectorIndex: number) => {
@@ -161,7 +184,13 @@ export function TicketSectorForm({ initialSectors, onChange }: TicketSectorFormP
   const addSector = () => {
     setSectors([...sectors, {
       name: '',
-      variations: [{ name: '', price: 0, quantity: 0 }]
+      variations: [{ 
+        name: '', 
+        price: 0, 
+        quantity: 0,
+        serviceCharge: 0,
+        serviceChargeType: "fixed"
+      }]
     }]);
   };
 
@@ -175,7 +204,9 @@ export function TicketSectorForm({ initialSectors, onChange }: TicketSectorFormP
     newSectors[sectorIndex].variations.push({ 
       name: '', 
       price: 0, 
-      quantity: 0 
+      quantity: 0,
+      serviceCharge: 0,
+      serviceChargeType: "fixed"
     });
     setSectors(newSectors);
   };
@@ -267,43 +298,43 @@ export function TicketSectorForm({ initialSectors, onChange }: TicketSectorFormP
               {sector.variations.map((variation, variationIndex) => (
                 <div 
                   key={variationIndex} 
-                  className="grid grid-cols-3 gap-2 items-center"
+                  className="grid grid-cols-1 gap-2 items-center"
                 >
-                  <div>
-                    <Label className={hasVariationError(sectorIndex, variationIndex, 'name') ? 'text-red-500' : ''}>
-                      Tipo *
-                    </Label>
-                    <Input 
-                      placeholder="Tipo (Ej: General, Socio)" 
-                      value={variation.name}
-                      onChange={(e) => updateVariation(
-                        sectorIndex, 
-                        variationIndex, 
-                        'name', 
-                        e.target.value
-                      )}
-                      className={hasVariationError(sectorIndex, variationIndex, 'name') ? 'border-red-500' : ''}
-                    />
-                  </div>
-                  <div>
-                    <Label className={hasVariationError(sectorIndex, variationIndex, 'price') ? 'text-red-500' : ''}>
-                      Precio *
-                    </Label>
-                    <Input 
-                      type="number" 
-                      placeholder="Precio" 
-                      value={variation.price}
-                      onChange={(e) => updateVariation(
-                        sectorIndex, 
-                        variationIndex, 
-                        'price', 
-                        Number(e.target.value)
-                      )}
-                      className={hasVariationError(sectorIndex, variationIndex, 'price') ? 'border-red-500' : ''}
-                    />
-                  </div>
-                  <div className="flex items-center">
-                    <div className="flex-1">
+                  <div className="grid grid-cols-3 gap-2 items-center">
+                    <div>
+                      <Label className={hasVariationError(sectorIndex, variationIndex, 'name') ? 'text-red-500' : ''}>
+                        Tipo *
+                      </Label>
+                      <Input 
+                        placeholder="Tipo (Ej: General, Socio)" 
+                        value={variation.name}
+                        onChange={(e) => updateVariation(
+                          sectorIndex, 
+                          variationIndex, 
+                          'name', 
+                          e.target.value
+                        )}
+                        className={hasVariationError(sectorIndex, variationIndex, 'name') ? 'border-red-500' : ''}
+                      />
+                    </div>
+                    <div>
+                      <Label className={hasVariationError(sectorIndex, variationIndex, 'price') ? 'text-red-500' : ''}>
+                        Precio *
+                      </Label>
+                      <Input 
+                        type="number" 
+                        placeholder="Precio" 
+                        value={variation.price}
+                        onChange={(e) => updateVariation(
+                          sectorIndex, 
+                          variationIndex, 
+                          'price', 
+                          Number(e.target.value)
+                        )}
+                        className={hasVariationError(sectorIndex, variationIndex, 'price') ? 'border-red-500' : ''}
+                      />
+                    </div>
+                    <div>
                       <Label className={hasVariationError(sectorIndex, variationIndex, 'quantity') ? 'text-red-500' : ''}>
                         Cantidad *
                       </Label>
@@ -320,11 +351,66 @@ export function TicketSectorForm({ initialSectors, onChange }: TicketSectorFormP
                         className={hasVariationError(sectorIndex, variationIndex, 'quantity') ? 'border-red-500' : ''}
                       />
                     </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-3 gap-2 items-center mt-2">
+                    <div className="col-span-2">
+                      <Label>
+                        Cargo por Servicio
+                      </Label>
+                      <Input 
+                        type="number" 
+                        placeholder={variation.serviceChargeType === "fixed" ? "Monto fijo por ticket" : "Porcentaje del precio"}
+                        value={variation.serviceCharge}
+                        onChange={(e) => updateVariation(
+                          sectorIndex, 
+                          variationIndex, 
+                          'serviceCharge', 
+                          Number(e.target.value)
+                        )}
+                      />
+                    </div>
+                    <div className="flex flex-col">
+                      <Label className="mb-2">Tipo</Label>
+                      <div className="flex items-center space-x-2">
+                        <div className="flex border rounded-md overflow-hidden">
+                          <Button
+                            type="button"
+                            variant={variation.serviceChargeType === "fixed" ? "default" : "outline"}
+                            size="sm"
+                            className="rounded-none"
+                            onClick={() => {
+                              const newSectors = [...sectors];
+                              newSectors[sectorIndex].variations[variationIndex].serviceChargeType = "fixed";
+                              setSectors(newSectors);
+                            }}
+                          >
+                            Fijo
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={variation.serviceChargeType === "percentage" ? "default" : "outline"}
+                            size="sm"
+                            className="rounded-none"
+                            onClick={() => {
+                              const newSectors = [...sectors];
+                              newSectors[sectorIndex].variations[variationIndex].serviceChargeType = "percentage";
+                              setSectors(newSectors);
+                            }}
+                          >
+                            Porcentaje
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex justify-end">
                     {sector.variations.length > 1 && (
                       <Button 
                         variant="ghost" 
                         size="icon" 
-                        className="ml-2 mt-6"
+                        className="ml-2"
                         onClick={() => removeVariation(sectorIndex, variationIndex)}
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />

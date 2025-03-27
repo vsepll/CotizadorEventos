@@ -12,7 +12,9 @@ const prismaClient = new PrismaClient()
 const TicketVariationSchema = z.object({
   name: z.string(),
   price: z.number(),
-  quantity: z.number()
+  quantity: z.number(),
+  serviceCharge: z.number().optional(),
+  serviceChargeType: z.enum(["fixed", "percentage"]).optional()
 });
 
 const TicketSectorSchema = z.object({
@@ -30,7 +32,6 @@ const QuotationSchema = z.object({
     name: z.string(),
     percentage: z.number()
   }),
-  serviceCharge: z.number(),
   additionalServicesPercentage: z.number().optional(),
   paymentMethods: z.object({
     credit: z.object({
@@ -207,7 +208,44 @@ export async function POST(request: Request) {
       } else {
         // Otherwise, calculate them from form data
         platformFee = quotationData.platform.percentage;
-        ticketingFee = quotationData.serviceCharge;
+        
+        // El cargo por servicio ahora se calcula basado en cada variación de ticket
+        // Por lo que debemos calcularlo manualmente sumando los cargos de cada variación
+        let ticketingFee: number = 0;
+        console.log('Sectores de tickets para cálculo de cargo de servicio:', JSON.stringify(ticketSectors, null, 2));
+
+        if (ticketSectors && ticketSectors.length > 0) {
+          ticketSectors.forEach((sector: { 
+            name: string; 
+            variations: Array<{
+              name: string;
+              price: number;
+              quantity: number;
+              serviceCharge?: number;
+              serviceChargeType?: "fixed" | "percentage";
+            }>;
+          }) => {
+            sector.variations.forEach((variation) => {
+              const serviceCharge = variation.serviceCharge || 0;
+              const serviceChargeType = variation.serviceChargeType || "fixed";
+              
+              let charge = 0;
+              if (serviceChargeType === "fixed") {
+                // Monto fijo por ticket
+                charge = serviceCharge * variation.quantity;
+              } else {
+                // Porcentaje del precio
+                charge = (variation.price * variation.quantity) * (serviceCharge / 100);
+              }
+              
+              console.log(`Variación: ${variation.name}, Tipo: ${serviceChargeType}, Valor: ${serviceCharge}, Cargo calculado: ${charge}`);
+              ticketingFee += charge;
+            });
+          });
+          
+          console.log('Cargo de servicio total calculado:', ticketingFee);
+        }
+        
         additionalServices = quotationData.additionalServicesPercentage || 0;
         
         // Calcular tarifas de medios de pago

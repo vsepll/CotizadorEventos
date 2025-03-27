@@ -7,7 +7,9 @@ import redis, { getGlobalParametersVersion } from "@/lib/redis"
 const TicketVariationSchema = z.object({
   name: z.string(),
   price: z.number().positive(),
-  quantity: z.number().int().positive()
+  quantity: z.number().int().positive(),
+  serviceCharge: z.number().nonnegative(),
+  serviceChargeType: z.enum(["fixed", "percentage"])
 });
 
 // Define schema for ticket sector
@@ -25,7 +27,6 @@ const QuotationInputSchema = z.object({
     name: z.enum(["TICKET_PLUS", "PALCO4"]),
     percentage: z.number().min(0).max(100)
   }),
-  serviceCharge: z.number().min(0).max(100),
   additionalServicesPercentage: z.number().min(0).max(100).optional(),
   paymentMethods: z.object({
     credit: z.object({
@@ -64,7 +65,6 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
     totalAmount = 0,
     ticketPrice = 0,
     platform,
-    serviceCharge,
     additionalServicesPercentage = 0,
     paymentMethods,
     employees = [],
@@ -107,8 +107,35 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
     ? ticketQuantity * globalParameters.palco4FeePerTicket 
     : totalValue * (platform.percentage / 100)
 
-  // Calculate service charge and additional services (our revenue)
-  const ticketingFee = totalValue * (serviceCharge / 100)
+  // Calculate service charge based on ticket variations
+  let ticketingFee = 0;
+  
+  // If ticket sectors are defined, calculate service charge based on them
+  if (ticketSectors.length > 0) {
+    console.log('Calculando cargo de servicio basado en sectores de tickets:', JSON.stringify(ticketSectors, null, 2));
+    
+    ticketSectors.forEach(sector => {
+      sector.variations.forEach(variation => {
+        const serviceCharge = variation.serviceCharge || 0;
+        const serviceChargeType = variation.serviceChargeType || "fixed";
+        
+        let charge = 0;
+        if (serviceChargeType === "fixed") {
+          // Fixed amount per ticket
+          charge = serviceCharge * variation.quantity;
+        } else {
+          // Percentage of ticket price
+          charge = (variation.price * variation.quantity) * (serviceCharge / 100);
+        }
+        
+        console.log(`Variación: ${variation.name}, Tipo: ${serviceChargeType}, Valor: ${serviceCharge}, Cargo calculado: ${charge}`);
+        ticketingFee += charge;
+      });
+    });
+    
+    console.log('Cargo de servicio total calculado:', ticketingFee);
+  }
+  
   const additionalServices = totalValue * (additionalServicesPercentage / 100)
 
   // Calculate payment fees
@@ -235,7 +262,9 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
       variations: sector.variations.map(variation => ({
         name: variation.name,
         price: variation.price,
-        quantity: variation.quantity
+        quantity: variation.quantity,
+        serviceCharge: variation.serviceCharge,
+        serviceChargeType: variation.serviceChargeType
       }))
     }))
   }

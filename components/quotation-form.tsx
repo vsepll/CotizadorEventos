@@ -46,7 +46,6 @@ interface FormData {
     name: "TICKET_PLUS" | "PALCO4";
     percentage: string;
   };
-  serviceCharge: string;
   additionalServicesPercentage: string;
   paymentMethods: {
     credit: {
@@ -82,6 +81,8 @@ interface FormData {
       name: string;
       price: number;
       quantity: number;
+      serviceCharge: number;
+      serviceChargeType: "fixed" | "percentage";
     }>;
   }>;
   estimatedPaymentDate: string | null;
@@ -154,7 +155,6 @@ export function QuotationForm() {
         name: "TICKET_PLUS",
         percentage: ""
       },
-      serviceCharge: "",
       additionalServicesPercentage: "",
       paymentMethods: {
         credit: {
@@ -203,21 +203,23 @@ export function QuotationForm() {
   useEffect(() => {
     const fetchGlobalParameters = async () => {
       try {
-        // Solo cargar parámetros si no hay datos guardados en localStorage
-        if (!localStorage.getItem('quotationFormData')) {
-          const response = await fetch("/api/admin/parameters")
-          if (!response.ok) {
-            throw new Error("Failed to fetch global parameters")
-          }
-          const data = await response.json()
+        const response = await fetch('/api/global-parameters');
+        if (!response.ok) {
+          throw new Error('Failed to fetch global parameters');
+        }
+        const data = await response.json();
+        
+        // Aplicamos valores por defecto solo si formData está en estado "vacío"
+        if (!formData.eventType && !formData.platform.percentage) {
+          console.log('Applying default global parameters:', data);
           
-          setFormData((prevData) => ({
-            ...prevData,
+          // Solo establecemos los parámetros si el formulario está "vacío"
+          setFormData(prevState => ({
+            ...prevState,
             platform: {
-              name: "TICKET_PLUS",
+              ...prevState.platform,
               percentage: data.defaultPlatformFee.toString()
             },
-            serviceCharge: data.defaultTicketingFee.toString(),
             additionalServicesPercentage: data.defaultAdditionalServicesFee.toString(),
             paymentMethods: {
               credit: {
@@ -233,22 +235,23 @@ export function QuotationForm() {
                 chargedTo: "CONSUMER"
               }
             },
-            credentialsCost: data.defaultCredentialsCost.toString(),
-            employees: [],
-            mobilityKilometers: data.defaultMobilityCost.toString(),
-            numberOfTolls: data.defaultNumberOfTolls.toString(),
-            tollsCost: data.defaultTollsCost.toString(),
-          }))
+            // Si hay un sector de tickets, actualizamos sus valores por defecto de serviceCharge
+            ticketSectors: prevState.ticketSectors.length > 0 ? 
+              prevState.ticketSectors.map(sector => ({
+                ...sector,
+                variations: sector.variations.map(variation => ({
+                  ...variation,
+                  serviceCharge: variation.serviceCharge || data.defaultTicketingFee,
+                  serviceChargeType: variation.serviceChargeType || "percentage"
+                }))
+              })) : 
+              prevState.ticketSectors
+          }));
         }
       } catch (error) {
-        console.error("Error fetching global parameters:", error)
-        toast({
-          title: "Error",
-          description: "Failed to load default parameters. Please try again.",
-          variant: "destructive",
-        })
+        console.error('Error fetching global parameters:', error);
       }
-    }
+    };
     
     fetchGlobalParameters()
   }, [toast])
@@ -290,7 +293,6 @@ export function QuotationForm() {
         name: "TICKET_PLUS",
         percentage: ""
       },
-      serviceCharge: "",
       additionalServicesPercentage: "",
       paymentMethods: {
         credit: {
@@ -428,6 +430,8 @@ export function QuotationForm() {
       name: string;
       price: number;
       quantity: number;
+      serviceCharge: number;
+      serviceChargeType: "fixed" | "percentage";
     }>;
   }>) => {
     setFormData(prev => ({
@@ -498,7 +502,6 @@ export function QuotationForm() {
           ...formData.platform,
           percentage: Number(formData.platform.percentage)
         },
-        serviceCharge: Number(formData.serviceCharge),
         additionalServicesPercentage: Number(formData.additionalServicesPercentage),
         paymentMethods: {
           credit: {
@@ -546,10 +549,9 @@ export function QuotationForm() {
       }
 
       // Obtener los resultados calculados
-      const calculationResults = await response.json()
-      
-      // Actualizar el estado con los resultados calculados para mostrar el componente QuotationResults
-      setResults(adaptResults(calculationResults))
+      const responseData = await response.json()
+      console.log('Resultados recibidos de la API para visualizar:', responseData)
+      setResults(responseData)
       
       toast({
         title: "Éxito",
@@ -604,7 +606,6 @@ export function QuotationForm() {
           name: formData.platform.name,
           percentage: Number(formData.platform.percentage)
         },
-        serviceCharge: Number(formData.serviceCharge),
         additionalServicesPercentage: Number(formData.additionalServicesPercentage) || 0,
         paymentMethods: {
           credit: {
@@ -639,7 +640,9 @@ export function QuotationForm() {
           variations: sector.variations.map(variation => ({
             name: variation.name,
             price: Number(variation.price),
-            quantity: Number(variation.quantity)
+            quantity: Number(variation.quantity),
+            serviceCharge: Number(variation.serviceCharge),
+            serviceChargeType: variation.serviceChargeType
           }))
         })),
         // Nuevos campos
@@ -743,7 +746,7 @@ export function QuotationForm() {
       hasValidTicketSectors() &&
       formData.platform.name &&
       isValidNumber(formData.platform.percentage) &&
-      isValidNumber(formData.serviceCharge)
+      isValidNumber(formData.additionalServicesPercentage)
 
     // Validar medios de pago
     const validatePaymentMethod = (method: { percentage: string, chargedTo: string }) => {
@@ -928,24 +931,6 @@ export function QuotationForm() {
                     onChange={handleInputChange}
                     className="w-full"
                     placeholder="Ej: 0.16"
-                    required
-                  />
-                </div>
-                <div className="space-y-4">
-                  <TooltipLabel
-                    htmlFor="serviceCharge"
-                    label="Cargo por Servicio (%)"
-                    tooltip="Porcentaje que cobramos como cargo por servicio (ingreso)"
-                    required
-                  />
-                  <Input
-                    id="serviceCharge"
-                    name="serviceCharge"
-                    type="number"
-                    value={formData.serviceCharge}
-                    onChange={handleInputChange}
-                    className="w-full"
-                    placeholder="Ej: 5"
                     required
                   />
                 </div>
