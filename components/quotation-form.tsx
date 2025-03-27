@@ -29,6 +29,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { CustomOperationalCosts } from "@/components/custom-operational-costs"
 import { TicketSectorForm } from "@/components/ticket-sector-form"
+import { DatePicker } from "@/components/ui/date-picker"
 
 interface TooltipLabelProps {
   htmlFor: string;
@@ -83,6 +84,8 @@ interface FormData {
       quantity: number;
     }>;
   }>;
+  estimatedPaymentDate: string | null;
+  paymentStatus: "PENDING" | "PAID";
 }
 
 interface EmployeeType {
@@ -134,7 +137,9 @@ export function QuotationForm() {
           mobilityKilometers: parsedData.mobilityKilometers || "",
           numberOfTolls: parsedData.numberOfTolls || "",
           tollsCost: parsedData.tollsCost || "",
-          ticketSectors: parsedData.ticketSectors || []
+          ticketSectors: parsedData.ticketSectors || [],
+          estimatedPaymentDate: parsedData.estimatedPaymentDate || null,
+          paymentStatus: parsedData.paymentStatus || "PENDING"
         }
       }
     } catch (error) {
@@ -171,7 +176,9 @@ export function QuotationForm() {
       numberOfTolls: "",
       tollsCost: "",
       customOperationalCosts: [],
-      ticketSectors: []
+      ticketSectors: [],
+      estimatedPaymentDate: null,
+      paymentStatus: "PENDING"
     }
   })
 
@@ -305,7 +312,9 @@ export function QuotationForm() {
       numberOfTolls: "",
       tollsCost: "",
       customOperationalCosts: [],
-      ticketSectors: []
+      ticketSectors: [],
+      estimatedPaymentDate: null,
+      paymentStatus: "PENDING"
     })
   }
 
@@ -591,8 +600,6 @@ export function QuotationForm() {
         eventType: formData.eventType,
         totalAmount: Number(formData.totalAmount), // This is the total monetary value
         ticketPrice: Number(formData.ticketPrice),
-        // Add explicit ticket quantity field
-        ticketQuantity: totalTicketsQuantity,
         platform: {
           name: formData.platform.name,
           percentage: Number(formData.platform.percentage)
@@ -635,8 +642,13 @@ export function QuotationForm() {
             quantity: Number(variation.quantity)
           }))
         })),
+        // Nuevos campos
+        estimatedPaymentDate: formData.estimatedPaymentDate, 
+        paymentStatus: formData.paymentStatus,
         // Include the calculation results
         ...results,
+        // Calculate ticket quantity from sectors
+        ticketQuantity: totalTicketsQuantity,
         // Override with the user-provided name
         name: quotationName,
       };
@@ -1408,8 +1420,40 @@ export function QuotationForm() {
                       id="quotationName"
                       value={quotationName}
                       onChange={(e) => setQuotationName(e.target.value)}
-                      placeholder="Ej: Evento Corporativo 2024"
+                      placeholder="Ingrese un nombre para la cotización"
                     />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="estimatedPaymentDate">Fecha Estimada de Cobro</Label>
+                    <DatePicker
+                      id="estimatedPaymentDate"
+                      date={formData.estimatedPaymentDate ? new Date(formData.estimatedPaymentDate) : undefined}
+                      onSelect={(date) => setFormData(prev => ({
+                        ...prev,
+                        estimatedPaymentDate: date ? date.toISOString() : null
+                      }))}
+                      placeholder="Seleccione una fecha"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="paymentStatus">Estado de Pago</Label>
+                    <Select
+                      value={formData.paymentStatus}
+                      onValueChange={(value) => setFormData(prev => ({
+                        ...prev,
+                        paymentStatus: value as "PENDING" | "PAID"
+                      }))}
+                    >
+                      <SelectTrigger id="paymentStatus">
+                        <SelectValue placeholder="Seleccione el estado" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="PENDING">Pendiente</SelectItem>
+                        <SelectItem value="PAID">Pagado</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 <DialogFooter>

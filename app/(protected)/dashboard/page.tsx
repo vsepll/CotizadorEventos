@@ -8,12 +8,16 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/components/ui/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { GlobalProfitability } from "@/components/global-profitability"
 import {
   FileText,
   DollarSign,
   TrendingUp,
   Calendar,
   Loader2,
+  BarChart3,
+  ChartPieIcon,
 } from "lucide-react"
 
 interface QuotationStats {
@@ -33,6 +37,7 @@ export default function DashboardPage() {
   const { data: session, status } = useSession()
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<QuotationStats | null>(null)
+  const [activeTab, setActiveTab] = useState("overview")
   const router = useRouter()
   const { toast } = useToast()
 
@@ -68,13 +73,113 @@ export default function DashboardPage() {
     }
   }, [status, router, toast])
 
-  if (status === "loading" || loading) {
+  const renderOverview = () => {
+    if (status === "loading" || loading) {
+      return (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+        </div>
+      )
+    }
+
     return (
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Skeleton className="h-32" />
-        <Skeleton className="h-32" />
-        <Skeleton className="h-32" />
-        <Skeleton className="h-32" />
+      <div className="space-y-8">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card className="p-6">
+            <div className="flex items-center space-x-2">
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+              <h3 className="text-sm font-medium">Ingresos totales</h3>
+            </div>
+            <div className="mt-4">
+              <p className="text-2xl font-bold">
+                ${stats?.totalRevenue.toLocaleString("es-AR", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2
+                })}
+              </p>
+            </div>
+          </Card>
+
+          <Card className="p-6">
+            <div className="flex items-center space-x-2">
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+              <h3 className="text-sm font-medium">Costos totales</h3>
+            </div>
+            <div className="mt-4">
+              <p className="text-2xl font-bold">
+                ${stats?.totalCosts.toLocaleString("es-AR", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2
+                })}
+              </p>
+            </div>
+          </Card>
+
+          <Card className="p-6">
+            <div className="flex items-center space-x-2">
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              <h3 className="text-sm font-medium">Rentabilidad promedio</h3>
+            </div>
+            <div className="mt-4">
+              <p className="text-2xl font-bold">
+                {stats?.averageProfitability.toLocaleString("es-AR", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2
+                })}%
+              </p>
+            </div>
+          </Card>
+
+          <Card className="p-6">
+            <div className="flex items-center space-x-2">
+              <FileText className="h-4 w-4 text-muted-foreground" />
+              <h3 className="text-sm font-medium">Total de cotizaciones</h3>
+            </div>
+            <div className="mt-4">
+              <p className="text-2xl font-bold">
+                {stats?.totalQuotations.toLocaleString()}
+              </p>
+            </div>
+          </Card>
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="text-lg font-medium">Últimas cotizaciones</h3>
+          <div className="grid gap-4">
+            {stats?.recentQuotations.map((quotation) => (
+              <Card key={quotation.id} className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Link
+                      href={`/quotations/${quotation.id}`}
+                      className="font-medium hover:underline"
+                    >
+                      {quotation.eventType}
+                    </Link>
+                    <p className="text-sm text-muted-foreground">
+                      {new Date(quotation.createdAt).toLocaleDateString("es-AR", {
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                      })}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-medium">
+                      {quotation.grossProfitability.toLocaleString("es-AR", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                      })}%
+                    </p>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
       </div>
     )
   }
@@ -97,99 +202,24 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="p-6">
-          <div className="flex items-center space-x-2">
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-            <h3 className="text-sm font-medium">Ingresos totales</h3>
-          </div>
-          <div className="mt-4">
-            <p className="text-2xl font-bold">
-              ${stats?.totalRevenue.toLocaleString("es-AR", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-              })}
-            </p>
-          </div>
-        </Card>
-
-        <Card className="p-6">
-          <div className="flex items-center space-x-2">
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-            <h3 className="text-sm font-medium">Costos totales</h3>
-          </div>
-          <div className="mt-4">
-            <p className="text-2xl font-bold">
-              ${stats?.totalCosts.toLocaleString("es-AR", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-              })}
-            </p>
-          </div>
-        </Card>
-
-        <Card className="p-6">
-          <div className="flex items-center space-x-2">
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            <h3 className="text-sm font-medium">Rentabilidad promedio</h3>
-          </div>
-          <div className="mt-4">
-            <p className="text-2xl font-bold">
-              {stats?.averageProfitability.toLocaleString("es-AR", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-              })}%
-            </p>
-          </div>
-        </Card>
-
-        <Card className="p-6">
-          <div className="flex items-center space-x-2">
-            <FileText className="h-4 w-4 text-muted-foreground" />
-            <h3 className="text-sm font-medium">Total de cotizaciones</h3>
-          </div>
-          <div className="mt-4">
-            <p className="text-2xl font-bold">
-              {stats?.totalQuotations.toLocaleString()}
-            </p>
-          </div>
-        </Card>
-      </div>
-
-      <div className="space-y-4">
-        <h3 className="text-lg font-medium">Últimas cotizaciones</h3>
-        <div className="grid gap-4">
-          {stats?.recentQuotations.map((quotation) => (
-            <Card key={quotation.id} className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Link
-                    href={`/quotations/${quotation.id}`}
-                    className="font-medium hover:underline"
-                  >
-                    {quotation.eventType}
-                  </Link>
-                  <p className="text-sm text-muted-foreground">
-                    {new Date(quotation.createdAt).toLocaleDateString("es-AR", {
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                    })}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="font-medium">
-                    {quotation.grossProfitability.toLocaleString("es-AR", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2
-                    })}%
-                  </p>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
-      </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="overview" className="flex items-center space-x-2">
+            <BarChart3 className="h-4 w-4" />
+            <span>Resumen</span>
+          </TabsTrigger>
+          <TabsTrigger value="profitability" className="flex items-center space-x-2">
+            <ChartPieIcon className="h-4 w-4" />
+            <span>Rentabilidad Global</span>
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="overview" className="space-y-4">
+          {renderOverview()}
+        </TabsContent>
+        <TabsContent value="profitability" className="space-y-4">
+          <GlobalProfitability />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 } 

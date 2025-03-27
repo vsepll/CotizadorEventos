@@ -38,6 +38,7 @@ model GlobalParameters {
   ticketingCostPerTicket       Float
   fuelCostPerLiter             Float @default(0)
   kmPerLiter                   Float @default(10)
+  monthlyFixedCosts            Float @default(0)
 }
 
 model Quotation {
@@ -60,6 +61,8 @@ model Quotation {
   updatedAt          DateTime              @updatedAt
   userId             String
   ticketingFee       Float
+  estimatedPaymentDate DateTime?
+  paymentStatus      String                @default("PENDING")
   user               User                  @relation(fields: [userId], references: [id])
   customCosts        QuotationCustomCost[]
   ticketSectors      TicketSector[]

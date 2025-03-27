@@ -60,7 +60,9 @@ const QuotationSchema = z.object({
     name: z.string(),
     amount: z.number()
   })).optional(),
-  ticketSectors: z.array(TicketSectorSchema)
+  ticketSectors: z.array(TicketSectorSchema),
+  estimatedPaymentDate: z.string().nullable().optional(),
+  paymentStatus: z.enum(["PENDING", "PAID"]).default("PENDING")
 });
 
 export async function GET() {
@@ -263,6 +265,9 @@ export async function POST(request: Request) {
           palco4Cost: palco4Cost, 
           lineCost: lineCost,
           userId: session.user.id,
+          // Nuevos campos
+          estimatedPaymentDate: body.estimatedPaymentDate ? new Date(body.estimatedPaymentDate) : null,
+          paymentStatus: body.paymentStatus || "PENDING",
           // Crear sectores de tickets como relaciones anidadas
           ticketSectors: {
             create: ticketSectors.map((sector: TicketSector) => ({

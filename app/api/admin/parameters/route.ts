@@ -22,7 +22,8 @@ const ParametersSchema = z.object({
   lineCostPercentage: z.number().min(0).max(100),
   ticketingCostPerTicket: z.number().nonnegative(),
   fuelCostPerLiter: z.number().nonnegative().default(0),
-  kmPerLiter: z.number().positive().default(10)
+  kmPerLiter: z.number().positive().default(10),
+  monthlyFixedCosts: z.number().nonnegative().default(0)
 })
 
 const defaultParameters = {
@@ -40,7 +41,8 @@ const defaultParameters = {
   lineCostPercentage: 0.41,
   ticketingCostPerTicket: 5,
   fuelCostPerLiter: 300,
-  kmPerLiter: 10
+  kmPerLiter: 10,
+  monthlyFixedCosts: 0
 }
 
 export async function GET() {

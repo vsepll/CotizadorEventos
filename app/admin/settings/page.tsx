@@ -44,6 +44,7 @@ interface GlobalParameters {
   ticketingCostPerTicket: number
   fuelCostPerLiter: number
   kmPerLiter: number
+  monthlyFixedCosts?: number
 }
 
 interface EmployeeType {
@@ -92,7 +93,15 @@ export default function SettingsPage() {
         const response = await fetch("/api/admin/parameters")
         if (!response.ok) throw new Error("Failed to fetch parameters")
         const data = await response.json()
-        setGlobalParameters(data)
+        
+        // Intentar obtener los costos fijos mensuales desde localStorage
+        const savedMonthlyCosts = localStorage.getItem('monthlyFixedCosts')
+        
+        setGlobalParameters({
+          ...data,
+          // Si existe en localStorage, usar ese valor; de lo contrario, usar 0
+          monthlyFixedCosts: savedMonthlyCosts ? Number(savedMonthlyCosts) : 0
+        })
       } catch (error) {
         console.error("Error:", error)
         toast({
@@ -504,6 +513,77 @@ export default function SettingsPage() {
                         />
                       </div>
                     </div>
+                  </div>
+
+                  <div className="space-y-6 mt-8">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Costos Fijos Mensuales</CardTitle>
+                        <CardDescription>
+                          Configura los costos fijos mensuales para el cálculo de rentabilidad global
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="flex flex-col space-y-4">
+                          <div>
+                            <Label htmlFor="monthlyFixedCosts">Costos Fijos Mensuales</Label>
+                            <div className="flex items-center space-x-2">
+                              <Input
+                                id="monthlyFixedCosts"
+                                type="number"
+                                value={globalParameters?.monthlyFixedCosts || 0}
+                                onChange={(e) => {
+                                  // Actualizar el estado local
+                                  setGlobalParameters(prev => ({
+                                    ...prev!,
+                                    monthlyFixedCosts: Number(e.target.value)
+                                  }))
+                                }}
+                                min="0"
+                                step="1000"
+                              />
+                              <Button 
+                                onClick={async () => {
+                                  try {
+                                    // Actualizar solo los costos fijos mensuales mediante un endpoint separado
+                                    const response = await fetch("/api/global-monthly-costs", {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ 
+                                        value: globalParameters?.monthlyFixedCosts || 0 
+                                      }),
+                                    })
+
+                                    if (!response.ok) throw new Error("Failed to update monthly fixed costs")
+
+                                    // Mostrar mensaje de éxito
+                                    toast({
+                                      title: "Éxito",
+                                      description: "Costos fijos mensuales actualizados correctamente"
+                                    })
+
+                                    // Guardar en localStorage para persistencia local
+                                    localStorage.setItem('monthlyFixedCosts', String(globalParameters?.monthlyFixedCosts || 0))
+                                  } catch (error) {
+                                    console.error("Error:", error)
+                                    toast({
+                                      title: "Error",
+                                      description: "No se pudieron actualizar los costos fijos mensuales",
+                                      variant: "destructive",
+                                    })
+                                  }
+                                }}
+                              >
+                                Guardar
+                              </Button>
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-2">
+                              Este valor se utiliza para el cálculo de rentabilidad global de la empresa
+                            </p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
                   </div>
 
                   <Button type="submit" disabled={isSaving}>
