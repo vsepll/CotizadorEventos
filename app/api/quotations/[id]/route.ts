@@ -95,3 +95,69 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
   }
 }
 
+export async function PATCH(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  const session = await getServerSession(authOptions)
+
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "No autorizado" }, { status: 401 })
+  }
+
+  try {
+    const { paymentStatus } = await request.json()
+
+    // Verificar que el estado sea válido
+    if (!["PENDING", "PAID"].includes(paymentStatus)) {
+      return NextResponse.json(
+        { error: "Estado de pago inválido" },
+        { status: 400 }
+      )
+    }
+
+    // Obtener la cotización actual para verificar permisos
+    const quotation = await prisma.quotation.findUnique({
+      where: { id: params.id },
+      select: { userId: true }
+    })
+
+    if (!quotation) {
+      return NextResponse.json(
+        { error: "Cotización no encontrada" },
+        { status: 404 }
+      )
+    }
+
+    // Verificar permisos (solo el creador o un admin pueden modificar)
+    if (quotation.userId !== session.user.id && session.user.role !== "ADMIN") {
+      return NextResponse.json(
+        { error: "No autorizado para modificar esta cotización" },
+        { status: 403 }
+      )
+    }
+
+    // Actualizar el estado
+    const updatedQuotation = await prisma.quotation.update({
+      where: { id: params.id },
+      data: { paymentStatus },
+      include: {
+        user: {
+          select: {
+            name: true,
+            email: true
+          }
+        }
+      }
+    })
+
+    return NextResponse.json(updatedQuotation)
+  } catch (error) {
+    console.error("Error updating quotation:", error)
+    return NextResponse.json(
+      { error: "Error al actualizar la cotización" },
+      { status: 500 }
+    )
+  }
+}
+

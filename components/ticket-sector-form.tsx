@@ -1,12 +1,30 @@
 "use client"
 
+import * as React from "react";
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Trash2, Plus, AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface TicketVariation {
   name: string;
@@ -45,18 +63,30 @@ interface TicketSectorFormProps {
 }
 
 export function TicketSectorForm({ initialSectors, onChange }: TicketSectorFormProps) {
-  const [sectors, setSectors] = useState<TicketSector[]>(initialSectors || [{
-    name: '',
-    variations: [{ 
-      name: '', 
-      price: 0, 
-      quantity: 0,
-      serviceCharge: 0,
-      serviceChargeType: "fixed"
+  const [sectors, setSectors] = React.useState<TicketSector[]>(
+    initialSectors || [{
+      name: '',
+      variations: [{ 
+        name: '', 
+        price: 0, 
+        quantity: 0,
+        serviceCharge: 0,
+        serviceChargeType: "fixed"
+      }]
     }]
-  }]);
+  );
+  
+  const [isAddVariationDialogOpen, setIsAddVariationDialogOpen] = React.useState(false);
+  const [currentSectorIndex, setCurrentSectorIndex] = React.useState<number | null>(null);
+  const [newVariation, setNewVariation] = React.useState<TicketVariation>({
+    name: '',
+    price: 0,
+    quantity: 0,
+    serviceCharge: 0,
+    serviceChargeType: "fixed"
+  });
 
-  const [validationErrors, setValidationErrors] = useState<{
+  const [validationErrors, setValidationErrors] = React.useState<{
     sectors: {
       nameError: boolean;
       variationsError: boolean;
@@ -128,7 +158,7 @@ export function TicketSectorForm({ initialSectors, onChange }: TicketSectorFormP
     });
 
     // Compara si los errores han cambiado antes de actualizar el estado
-    const isEqual = (a, b) => {
+    const isEqual = (a: any[], b: any[]): boolean => {
       if (a.length !== b.length) return false;
       return JSON.stringify(a) === JSON.stringify(b);
     };
@@ -145,17 +175,20 @@ export function TicketSectorForm({ initialSectors, onChange }: TicketSectorFormP
     return sectorErrors.length === 0 && variationErrors.length === 0;
   };
 
+  // Memoizar los sectores para evitar renderizaciones innecesarias
+  const memoizedSectors = JSON.stringify(sectors);
+
   // Enviar cambios al componente padre cuando cambian los sectores
   useEffect(() => {
     if (onChange) {
       onChange(sectors);
     }
-  }, [sectors, onChange]);
+  }, [memoizedSectors, onChange]);
   
-  // Validar sectores solo cuando sea necesario
+  // Validar sectores solo cuando cambien los sectores (usando la versión memoizada)
   useEffect(() => {
     validateSectors();
-  }, [sectors]);
+  }, [memoizedSectors]);
 
   // Verificar si un sector tiene error de nombre
   const hasSectorNameError = (sectorIndex: number) => {
@@ -200,15 +233,24 @@ export function TicketSectorForm({ initialSectors, onChange }: TicketSectorFormP
   };
 
   const addVariation = (sectorIndex: number) => {
-    const newSectors = [...sectors];
-    newSectors[sectorIndex].variations.push({ 
-      name: '', 
-      price: 0, 
+    setCurrentSectorIndex(sectorIndex);
+    setNewVariation({
+      name: '',
+      price: 0,
       quantity: 0,
       serviceCharge: 0,
       serviceChargeType: "fixed"
     });
+    setIsAddVariationDialogOpen(true);
+  };
+
+  const handleAddVariation = () => {
+    if (currentSectorIndex === null) return;
+    
+    const newSectors = [...sectors];
+    newSectors[currentSectorIndex].variations.push(newVariation);
     setSectors(newSectors);
+    setIsAddVariationDialogOpen(false);
   };
 
   const removeVariation = (sectorIndex: number, variationIndex: number) => {
@@ -245,188 +287,219 @@ export function TicketSectorForm({ initialSectors, onChange }: TicketSectorFormP
       </Alert>
       
       {sectors.map((sector, sectorIndex) => (
-        <Card key={sectorIndex} className={`mb-4 ${hasSectorNameError(sectorIndex) || hasSectorVariationsError(sectorIndex) ? 'border-red-500' : ''}`}>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Sector {sectorIndex + 1}</CardTitle>
-              {hasSectorNameError(sectorIndex) && (
-                <CardDescription className="text-red-500">
-                  Debe ingresar un nombre para este sector
-                </CardDescription>
-              )}
-              {hasSectorVariationsError(sectorIndex) && (
-                <CardDescription className="text-red-500">
-                  Debe tener al menos una variación con nombre, precio y cantidad
-                </CardDescription>
-              )}
-            </div>
-            {sectors.length > 1 && (
-              <Button 
-                variant="destructive" 
-                size="icon" 
+        <Card key={sectorIndex} className="w-full">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <Label htmlFor={`sector-name-${sectorIndex}`} className={hasSectorNameError(sectorIndex) ? "text-destructive" : ""}>
+                  Nombre del Sector
+                  {hasSectorNameError(sectorIndex) && <span className="text-sm text-destructive ml-2">(Requerido)</span>}
+                </Label>
+                <Input
+                  id={`sector-name-${sectorIndex}`}
+                  value={sector.name}
+                  onChange={(e) => updateSector(sectorIndex, 'name', e.target.value)}
+                  placeholder="Ej: VIP, Platea, Campo"
+                  className={hasSectorNameError(sectorIndex) ? "border-destructive" : ""}
+                />
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={() => removeSector(sectorIndex)}
+                className="text-destructive hover:text-destructive hover:bg-destructive/10 ml-2"
               >
                 <Trash2 className="h-4 w-4" />
+                <span className="sr-only">Eliminar sector</span>
               </Button>
-            )}
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="mb-4">
-              <Label className={hasSectorNameError(sectorIndex) ? 'text-red-500' : ''}>
-                Nombre del Sector *
-              </Label>
-              <Input 
-                placeholder="Ej: Platea, Campo, VIP" 
-                value={sector.name}
-                onChange={(e) => updateSector(sectorIndex, 'name', e.target.value)}
-                className={hasSectorNameError(sectorIndex) ? 'border-red-500' : ''}
-              />
-            </div>
-
             <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <h3 className="text-lg font-semibold">Variaciones de Tickets</h3>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  onClick={() => addVariation(sectorIndex)}
-                >
-                  <Plus className="h-4 w-4 mr-2" /> Añadir Variación
-                </Button>
+              <div className="grid grid-cols-5 gap-2 text-sm font-medium text-muted-foreground mb-1">
+                <div>Variación</div>
+                <div>Precio</div>
+                <div>Cantidad</div>
+                <div>Cargo de Servicio</div>
+                <div></div>
               </div>
-
+              
+              {hasSectorVariationsError(sectorIndex) && (
+                <div className="text-sm text-destructive mb-2">
+                  Debe tener al menos una variación válida
+                </div>
+              )}
+              
               {sector.variations.map((variation, variationIndex) => (
-                <div 
-                  key={variationIndex} 
-                  className="grid grid-cols-1 gap-2 items-center"
-                >
-                  <div className="grid grid-cols-3 gap-2 items-center">
-                    <div>
-                      <Label className={hasVariationError(sectorIndex, variationIndex, 'name') ? 'text-red-500' : ''}>
-                        Tipo *
-                      </Label>
-                      <Input 
-                        placeholder="Tipo (Ej: General, Socio)" 
-                        value={variation.name}
-                        onChange={(e) => updateVariation(
-                          sectorIndex, 
-                          variationIndex, 
-                          'name', 
-                          e.target.value
-                        )}
-                        className={hasVariationError(sectorIndex, variationIndex, 'name') ? 'border-red-500' : ''}
-                      />
-                    </div>
-                    <div>
-                      <Label className={hasVariationError(sectorIndex, variationIndex, 'price') ? 'text-red-500' : ''}>
-                        Precio *
-                      </Label>
-                      <Input 
-                        type="number" 
-                        placeholder="Precio" 
-                        value={variation.price}
-                        onChange={(e) => updateVariation(
-                          sectorIndex, 
-                          variationIndex, 
-                          'price', 
-                          Number(e.target.value)
-                        )}
-                        className={hasVariationError(sectorIndex, variationIndex, 'price') ? 'border-red-500' : ''}
-                      />
-                    </div>
-                    <div>
-                      <Label className={hasVariationError(sectorIndex, variationIndex, 'quantity') ? 'text-red-500' : ''}>
-                        Cantidad *
-                      </Label>
-                      <Input 
-                        type="number" 
-                        placeholder="Cantidad" 
-                        value={variation.quantity}
-                        onChange={(e) => updateVariation(
-                          sectorIndex, 
-                          variationIndex, 
-                          'quantity', 
-                          Number(e.target.value)
-                        )}
-                        className={hasVariationError(sectorIndex, variationIndex, 'quantity') ? 'border-red-500' : ''}
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-3 gap-2 items-center mt-2">
-                    <div className="col-span-2">
-                      <Label>
-                        Cargo por Servicio
-                      </Label>
-                      <Input 
-                        type="number" 
-                        placeholder={variation.serviceChargeType === "fixed" ? "Monto fijo por ticket" : "Porcentaje del precio"}
-                        value={variation.serviceCharge}
-                        onChange={(e) => updateVariation(
-                          sectorIndex, 
-                          variationIndex, 
-                          'serviceCharge', 
-                          Number(e.target.value)
-                        )}
-                      />
-                    </div>
-                    <div className="flex flex-col">
-                      <Label className="mb-2">Tipo</Label>
-                      <div className="flex items-center space-x-2">
-                        <div className="flex border rounded-md overflow-hidden">
-                          <Button
-                            type="button"
-                            variant={variation.serviceChargeType === "fixed" ? "default" : "outline"}
-                            size="sm"
-                            className="rounded-none"
-                            onClick={() => {
-                              const newSectors = [...sectors];
-                              newSectors[sectorIndex].variations[variationIndex].serviceChargeType = "fixed";
-                              setSectors(newSectors);
-                            }}
-                          >
-                            Fijo
-                          </Button>
-                          <Button
-                            type="button"
-                            variant={variation.serviceChargeType === "percentage" ? "default" : "outline"}
-                            size="sm"
-                            className="rounded-none"
-                            onClick={() => {
-                              const newSectors = [...sectors];
-                              newSectors[sectorIndex].variations[variationIndex].serviceChargeType = "percentage";
-                              setSectors(newSectors);
-                            }}
-                          >
-                            Porcentaje
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex justify-end">
-                    {sector.variations.length > 1 && (
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="ml-2"
-                        onClick={() => removeVariation(sectorIndex, variationIndex)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                <div key={variationIndex} className="grid grid-cols-5 gap-2 items-end">
+                  <div>
+                    <Input
+                      value={variation.name}
+                      onChange={(e) => updateVariation(sectorIndex, variationIndex, 'name', e.target.value)}
+                      placeholder="Ej: Adulto, Niño"
+                      className={hasVariationError(sectorIndex, variationIndex, 'name') ? "border-destructive" : ""}
+                    />
+                    {hasVariationError(sectorIndex, variationIndex, 'name') && (
+                      <span className="text-xs text-destructive">Requerido</span>
                     )}
+                  </div>
+                  <div>
+                    <Input
+                      type="number"
+                      value={variation.price}
+                      onChange={(e) => updateVariation(sectorIndex, variationIndex, 'price', Number(e.target.value))}
+                      placeholder="Precio"
+                      className={hasVariationError(sectorIndex, variationIndex, 'price') ? "border-destructive" : ""}
+                    />
+                    {hasVariationError(sectorIndex, variationIndex, 'price') && (
+                      <span className="text-xs text-destructive">Debe ser mayor a 0</span>
+                    )}
+                  </div>
+                  <div>
+                    <Input
+                      type="number"
+                      value={variation.quantity}
+                      onChange={(e) => updateVariation(sectorIndex, variationIndex, 'quantity', Number(e.target.value))}
+                      placeholder="Cantidad"
+                      className={hasVariationError(sectorIndex, variationIndex, 'quantity') ? "border-destructive" : ""}
+                    />
+                    {hasVariationError(sectorIndex, variationIndex, 'quantity') && (
+                      <span className="text-xs text-destructive">Debe ser mayor a 0</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      value={variation.serviceCharge}
+                      onChange={(e) => updateVariation(sectorIndex, variationIndex, 'serviceCharge', Number(e.target.value))}
+                      placeholder="Cargo"
+                    />
+                    <Select
+                      value={variation.serviceChargeType}
+                      onValueChange={(value: "fixed" | "percentage") => updateVariation(sectorIndex, variationIndex, 'serviceChargeType', value)}
+                    >
+                      <SelectTrigger className="w-24">
+                        <SelectValue placeholder="Tipo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="fixed">$</SelectItem>
+                        <SelectItem value="percentage">%</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeVariation(sectorIndex, variationIndex)}
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      disabled={sector.variations.length <= 1}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      <span className="sr-only">Eliminar variación</span>
+                    </Button>
                   </div>
                 </div>
               ))}
             </div>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => addVariation(sectorIndex)}
+              className="mt-4 flex items-center gap-1"
+            >
+              <Plus className="h-4 w-4" />
+              Agregar Variación
+            </Button>
           </CardContent>
         </Card>
       ))}
-
-      <Button onClick={addSector} variant="secondary">
-        <Plus className="h-4 w-4 mr-2" /> Añadir Sector
+      
+      <Button
+        variant="outline"
+        onClick={addSector}
+        className="flex items-center gap-1"
+      >
+        <Plus className="h-4 w-4" />
+        Agregar Sector
       </Button>
+      
+      <Dialog open={isAddVariationDialogOpen} onOpenChange={setIsAddVariationDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Agregar Variación de Ticket</DialogTitle>
+            <DialogDescription>
+              Crea una nueva variación de ticket para este sector.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="variation-name">Nombre de la Variación</Label>
+              <Input
+                id="variation-name"
+                placeholder="Ej: Adulto, Niño, Jubilado"
+                value={newVariation.name}
+                onChange={(e) => setNewVariation({ ...newVariation, name: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="variation-price">Precio ($)</Label>
+              <Input
+                id="variation-price"
+                type="number"
+                placeholder="Ej: 1000"
+                value={newVariation.price.toString()}
+                onChange={(e) => setNewVariation({ ...newVariation, price: Number(e.target.value) })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="variation-quantity">Cantidad</Label>
+              <Input
+                id="variation-quantity"
+                type="number"
+                placeholder="Ej: 100"
+                value={newVariation.quantity.toString()}
+                onChange={(e) => setNewVariation({ ...newVariation, quantity: Number(e.target.value) })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="variation-service-charge">Cargo de Servicio</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="variation-service-charge"
+                  type="number"
+                  placeholder="Ej: 10"
+                  value={newVariation.serviceCharge.toString()}
+                  onChange={(e) => setNewVariation({ ...newVariation, serviceCharge: Number(e.target.value) })}
+                />
+                <Select
+                  value={newVariation.serviceChargeType}
+                  onValueChange={(value: "fixed" | "percentage") => setNewVariation({ ...newVariation, serviceChargeType: value })}
+                >
+                  <SelectTrigger className="w-24">
+                    <SelectValue placeholder="Tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fixed">$</SelectItem>
+                    <SelectItem value="percentage">%</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline">
+                Cancelar
+              </Button>
+            </DialogClose>
+            <Button type="submit" onClick={handleAddVariation}>
+              Agregar Variación
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 

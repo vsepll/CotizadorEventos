@@ -43,6 +43,15 @@ interface Quotation {
   createdAt: string
   grossProfitability: number
   ticketQuantity: number
+  user?: {
+    name: string | null
+    email: string
+  }
+}
+
+interface QuotationResponse {
+  quotations: Quotation[];
+  isAdmin: boolean;
 }
 
 export function QuotationList() {
@@ -51,6 +60,7 @@ export function QuotationList() {
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedType, setSelectedType] = useState<string>("all")
+  const [isAdmin, setIsAdmin] = useState(false)
   const [sortConfig, setSortConfig] = useState<{
     key: keyof Quotation
     direction: "ascending" | "descending"
@@ -74,9 +84,10 @@ export function QuotationList() {
       if (!response.ok) {
         throw new Error("Failed to fetch quotations")
       }
-      const data = await response.json()
-      setQuotations(data)
-      setFilteredQuotations(data)
+      const data: QuotationResponse = await response.json()
+      setQuotations(data.quotations)
+      setFilteredQuotations(data.quotations)
+      setIsAdmin(data.isAdmin)
     } catch (error) {
       console.error("Error fetching quotations:", error)
       toast({
@@ -121,7 +132,11 @@ export function QuotationList() {
       filtered = filtered.filter(
         (q) =>
           q.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          q.eventType.toLowerCase().includes(searchTerm.toLowerCase())
+          q.eventType.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (isAdmin && q.user && (
+            (q.user.name?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
+            q.user.email.toLowerCase().includes(searchTerm.toLowerCase())
+          ))
       )
     }
 
@@ -269,92 +284,94 @@ export function QuotationList() {
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {filteredQuotations.map((quotation) => (
-            <Card key={quotation.id} className="hover:shadow-lg transition-shadow">
-              <CardHeader>
-                <CardTitle className="flex justify-between items-start">
-                  <span className="font-semibold">{quotation.name}</span>
-                  <span className={`text-sm px-2 py-1 rounded-full ${
-                    (quotation.grossProfitability || 0) >= 20
-                      ? "bg-green-100 text-green-800"
-                      : (quotation.grossProfitability || 0) >= 10
-                      ? "bg-yellow-100 text-yellow-800"
-                      : "bg-red-100 text-red-800"
-                  }`}>
-                    {(quotation.grossProfitability || 0).toFixed(1)}% rentabilidad
-                  </span>
-                </CardTitle>
-                <CardDescription>
-                  <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-                    <Calendar className="h-4 w-4" />
-                    <span>
-                      {new Date(quotation.createdAt).toLocaleDateString('es-ES', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric'
-                      })}
-                    </span>
+            <Card key={quotation.id} className="mb-4">
+              <CardHeader className="pb-2">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <CardTitle className="text-xl">{quotation.name}</CardTitle>
+                    <CardDescription className="flex items-center space-x-4">
+                      <span>Tipo {quotation.eventType}</span>
+                      <span>•</span>
+                      <span>
+                        {format(new Date(quotation.createdAt), "d 'de' MMMM, yyyy", {
+                          locale: es,
+                        })}
+                      </span>
+                      {quotation.user && (
+                        <>
+                          <span>•</span>
+                          <span>
+                            Creado por {quotation.user.name || quotation.user.email}
+                          </span>
+                        </>
+                      )}
+                    </CardDescription>
                   </div>
-                </CardDescription>
+                  <div className="text-right">
+                    <p className="text-lg font-semibold">
+                      ${quotation.totalAmount.toLocaleString("es-MX")}
+                    </p>
+                    <p
+                      className={`text-sm ${
+                        quotation.grossProfitability >= 0
+                          ? "text-green-600 dark:text-green-400"
+                          : "text-red-600 dark:text-red-400"
+                      }`}
+                    >
+                      {quotation.grossProfitability.toFixed(2)}% de rentabilidad
+                    </p>
+                  </div>
+                </div>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Tipo de Evento:</span>
-                    <span className="font-medium">Tipo {quotation.eventType}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Monto Total:</span>
-                    <span className="font-medium">
-                      ${(quotation.totalAmount || 0).toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-muted-foreground">Cantidad de Tickets:</span>
-                    <span className="font-medium">
-                      {(quotation.ticketQuantity || 0).toLocaleString()}
-                    </span>
-                  </div>
+              <CardContent className="pb-2">
+                <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                  <span>{quotation.ticketQuantity} tickets</span>
                 </div>
               </CardContent>
-              <CardFooter className="flex justify-between">
-                <div className="flex space-x-2">
-                  <Button variant="outline" size="sm" asChild>
-                    <Link href={`/quotations/${quotation.id}`} className="flex items-center space-x-2">
-                      <Eye className="h-4 w-4" />
-                      <span>Ver</span>
-                    </Link>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleExportPDF(quotation)}
-                    disabled={isExporting === quotation.id}
-                  >
-                    {isExporting === quotation.id ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <FileDown className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
+              <CardFooter className="flex justify-end space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleExportPDF(quotation)}
+                  disabled={isExporting === quotation.id}
+                >
+                  {isExporting === quotation.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <FileDown className="h-4 w-4" />
+                  )}
+                  <span className="ml-2">Exportar PDF</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  asChild
+                >
+                  <Link href={`/quotations/${quotation.id}`}>
+                    <Eye className="h-4 w-4" />
+                    <span className="ml-2">Ver Detalles</span>
+                  </Link>
+                </Button>
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600">
+                    <Button variant="destructive" size="sm">
                       <Trash2 className="h-4 w-4" />
+                      <span className="ml-2">Eliminar</span>
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
                       <AlertDialogTitle>¿Está seguro?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        Esta acción no se puede deshacer. Esto eliminará permanentemente la cotización.
+                        Esta acción no se puede deshacer. Esto eliminará permanentemente la
+                        cotización.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Cancelar</AlertDialogCancel>
                       <AlertDialogAction
-                        className="bg-red-500 hover:bg-red-600"
                         onClick={() => handleDelete(quotation.id)}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                       >
                         Eliminar
                       </AlertDialogAction>

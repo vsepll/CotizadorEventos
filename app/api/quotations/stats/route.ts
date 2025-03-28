@@ -13,13 +13,27 @@ export async function GET() {
   }
 
   try {
-    // Obtener todas las cotizaciones del usuario
-    const quotations = await prisma.quotation.findMany({
-      where: { userId: session.user.id },
-      orderBy: { createdAt: "desc" },
+    // Get user role
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { role: true }
     })
 
-    // Calcular estadísticas
+    // Fetch quotations based on user role
+    const quotations = await prisma.quotation.findMany({
+      where: user?.role === "ADMIN" ? undefined : { userId: session.user.id },
+      orderBy: { createdAt: "desc" },
+      include: {
+        user: {
+          select: {
+            name: true,
+            email: true
+          }
+        }
+      }
+    })
+
+    // Calculate statistics
     const totalQuotations = quotations.length
     const totalRevenue = quotations.reduce((sum, q) => sum + q.totalRevenue, 0)
     const totalCosts = quotations.reduce((sum, q) => sum + q.totalCosts, 0)
@@ -27,7 +41,7 @@ export async function GET() {
       ? quotations.reduce((sum, q) => sum + q.grossProfitability, 0) / quotations.length
       : 0
 
-    // Obtener las 5 cotizaciones más recientes
+    // Get the 5 most recent quotations with user info
     const recentQuotations = quotations.slice(0, 5).map(q => ({
       id: q.id,
       name: q.name,
@@ -35,6 +49,8 @@ export async function GET() {
       totalAmount: q.totalAmount,
       createdAt: q.createdAt,
       grossProfitability: q.grossProfitability,
+      paymentStatus: q.paymentStatus,
+      user: q.user
     }))
 
     return NextResponse.json({
@@ -43,6 +59,7 @@ export async function GET() {
       totalCosts,
       averageProfitability,
       recentQuotations,
+      isAdmin: user?.role === "ADMIN"
     })
   } catch (error) {
     console.error("Error fetching quotation stats:", error)

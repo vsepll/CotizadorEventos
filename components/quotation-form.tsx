@@ -3,7 +3,7 @@
 import type React from "react"
 import type { QuotationResults } from "@/lib/calculations"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -18,11 +18,28 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogClose,
 } from "@/components/ui/dialog"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { InfoIcon, Calculator, Save, Building2, CreditCard, Users, Percent } from "lucide-react"
+import { 
+  InfoIcon, 
+  Calculator, 
+  Save, 
+  Building2, 
+  CreditCard, 
+  Users, 
+  Percent, 
+  Calendar as CalendarIcon, 
+  X, 
+  Ticket, 
+  CircleDollarSign,
+  ArrowRight,
+  CheckCircle2,
+  FileText,
+  Plus
+} from "lucide-react"
 import { Loader2 } from "lucide-react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
@@ -30,6 +47,10 @@ import Link from "next/link"
 import { CustomOperationalCosts } from "@/components/custom-operational-costs"
 import { TicketSectorForm } from "@/components/ticket-sector-form"
 import { DatePicker } from "@/components/ui/date-picker"
+import { format } from "date-fns"
+import { es } from "date-fns/locale"
+import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
 
 interface TooltipLabelProps {
   htmlFor: string;
@@ -188,6 +209,8 @@ export function QuotationForm() {
   const [quotationName, setQuotationName] = useState("")
   const [employeeTypes, setEmployeeTypes] = useState<EmployeeType[]>([])
   const [ticketSectors, setTicketSectors] = useState([])
+  // Add a state to control the save modal visibility
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false)
 
   // Guardar la pestaña activa en localStorage cuando cambia
   useEffect(() => {
@@ -195,9 +218,29 @@ export function QuotationForm() {
   }, [activeTab])
 
   // Guardar datos del formulario en localStorage cuando cambian
+  // Use a ref to store the previous form data to avoid unnecessary updates
+  const prevFormDataRef = useRef<string | null>(null);
+  
   useEffect(() => {
-    localStorage.setItem('quotationFormData', JSON.stringify(formData))
-  }, [formData])
+    try {
+      // Using setTimeout to defer the localStorage update after render
+      // This helps avoid blocking the main thread during updates
+      const timeoutId = setTimeout(() => {
+        const formDataString = JSON.stringify(formData);
+        
+        // Only update localStorage if the data has actually changed
+        if (formDataString !== prevFormDataRef.current) {
+          localStorage.setItem('quotationFormData', formDataString);
+          prevFormDataRef.current = formDataString;
+        }
+      }, 300); // Small debounce delay to batch multiple rapid updates
+
+      // Cleanup timeout on unmount or before next effect run
+      return () => clearTimeout(timeoutId);
+    } catch (error) {
+      console.error('Error saving form data to localStorage:', error)
+    }
+  }, [formData]);
 
   // Cargar parámetros globales solo si no hay datos guardados
   useEffect(() => {
@@ -434,10 +477,13 @@ export function QuotationForm() {
       serviceChargeType: "fixed" | "percentage";
     }>;
   }>) => {
-    setFormData(prev => ({
-      ...prev,
-      ticketSectors: newTicketSectors
-    }))
+    // Only update if the sectors have actually changed
+    if (JSON.stringify(newTicketSectors) !== JSON.stringify(formData.ticketSectors)) {
+      setFormData(prev => ({
+        ...prev,
+        ticketSectors: newTicketSectors
+      }))
+    }
   }
 
   // Añadir una función para adaptar los resultados al formato esperado por QuotationResults
@@ -694,23 +740,21 @@ export function QuotationForm() {
     }
   }
 
+  // Create a component for the TooltipLabel to simplify usage
   const TooltipLabel = ({ htmlFor, label, tooltip, required = false }: TooltipLabelProps) => (
-    <div className="flex items-center space-x-2">
-      <Label htmlFor={htmlFor} className="flex items-center space-x-1">
-        <span>{label}</span>
-        {required && <span className="text-red-500">*</span>}
-      </Label>
-      <TooltipProvider>
+    <TooltipProvider>
+      <div className="flex items-center space-x-1">
+        <Label htmlFor={htmlFor} className="flex items-center">
+          {label} {required && <span className="text-destructive">*</span>}
+        </Label>
         <Tooltip>
-          <TooltipTrigger asChild>
-            <InfoIcon className="h-4 w-4 text-muted-foreground cursor-help" />
+          <TooltipTrigger type="button" className="cursor-help">
+            <InfoIcon className="h-4 w-4 text-muted-foreground" />
           </TooltipTrigger>
-          <TooltipContent>
-            <p>{tooltip}</p>
-          </TooltipContent>
+          <TooltipContent>{tooltip}</TooltipContent>
         </Tooltip>
-      </TooltipProvider>
-    </div>
+      </div>
+    </TooltipProvider>
   )
 
   const isFormValid = () => {
@@ -822,163 +866,327 @@ export function QuotationForm() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto">
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle className="text-2xl">Nueva Cotización</CardTitle>
-          <CardDescription>Complete los detalles del evento para generar una cotización</CardDescription>
+    <div className="container max-w-screen-xl mx-auto">
+      <Card className="mb-4 border-primary/20 bg-background">
+        <CardHeader className="pb-3">
+          <div className="flex flex-col space-y-1.5">
+            <CardTitle className="text-2xl font-bold">Nueva Cotización de Evento</CardTitle>
+            <CardDescription>
+              Complete el formulario para calcular una cotización para su evento
+            </CardDescription>
+          </div>
         </CardHeader>
-        <CardContent>
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid grid-cols-5 gap-4 p-1">
-              <TabsTrigger value="event" className="flex items-center space-x-2">
-                <Calculator className="h-4 w-4" />
-                <span>Evento</span>
-              </TabsTrigger>
-              <TabsTrigger value="tickets" className="flex items-center space-x-2">
-                <Percent className="h-4 w-4" />
-                <span>Tickets</span>
-              </TabsTrigger>
-              <TabsTrigger value="platform" className="flex items-center space-x-2">
-                <Building2 className="h-4 w-4" />
-                <span>Plataforma y Servicios</span>
-              </TabsTrigger>
-              <TabsTrigger value="payments" className="flex items-center space-x-2">
-                <CreditCard className="h-4 w-4" />
-                <span>Medios de Pago</span>
-              </TabsTrigger>
-              <TabsTrigger value="operational" className="flex items-center space-x-2">
-                <Users className="h-4 w-4" />
-                <span>Operativo</span>
-              </TabsTrigger>
-            </TabsList>
+      </Card>
 
-            <TabsContent value="event" className="space-y-6">
-              <div className="grid grid-cols-1 gap-6">
-                <div className="space-y-4">
-                  <TooltipLabel
-                    htmlFor="eventType"
-                    label="Tipo de Evento"
-                    tooltip="Seleccione la categoría del evento que está cotizando."
-                    required
-                  />
-                  <Select value={formData.eventType} onValueChange={(value) => setFormData(prev => ({ ...prev, eventType: value }))}>
-                    <SelectTrigger id="eventType" className="w-full">
-                      <SelectValue placeholder="Seleccionar tipo de evento" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="A">Tipo A - Eventos Grandes</SelectItem>
-                      <SelectItem value="B">Tipo B - Eventos Medianos</SelectItem>
-                      <SelectItem value="C">Tipo C - Eventos Pequeños</SelectItem>
-                      <SelectItem value="D">Tipo D - Eventos Especiales</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </TabsContent>
+      {/* Formulario principal */}
+      <div className="w-full mb-6">
+        <Tabs 
+          value={activeTab} 
+          onValueChange={setActiveTab} 
+          className="w-full"
+        >
+          <TabsList className="w-full mb-6 grid grid-cols-5 h-auto p-1">
+            <TabsTrigger 
+              value="event" 
+              className="flex flex-col items-center py-3 px-2 gap-1 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            >
+              <FileText className="h-5 w-5" />
+              <span className="text-xs">Evento</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="tickets" 
+              className="flex flex-col items-center py-3 px-2 gap-1 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            >
+              <Ticket className="h-5 w-5" />
+              <span className="text-xs">Tickets</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="platform" 
+              className="flex flex-col items-center py-3 px-2 gap-1 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            >
+              <Building2 className="h-5 w-5" />
+              <span className="text-xs">Plataforma</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="payments" 
+              className="flex flex-col items-center py-3 px-2 gap-1 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            >
+              <CreditCard className="h-5 w-5" />
+              <span className="text-xs">Pagos</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="operational" 
+              className="flex flex-col items-center py-3 px-2 gap-1 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            >
+              <Users className="h-5 w-5" />
+              <span className="text-xs">Operaciones</span>
+            </TabsTrigger>
+          </TabsList>
 
-            <TabsContent value="tickets">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Tipos de Tickets</CardTitle>
-                  <CardDescription>
-                    Configura los diferentes tipos y precios de tickets para tu evento
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <TicketSectorForm 
-                    initialSectors={formData.ticketSectors}
-                    onChange={handleTicketSectorsChange}
-                  />
-                </CardContent>
-              </Card>
-            </TabsContent>
+          {/* Event Tab Content */}
+          <TabsContent value="event" className="space-y-6 mt-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-xl flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-primary" />
+                  Información del Evento
+                </CardTitle>
+                <CardDescription>
+                  Ingrese los detalles básicos del evento para su cotización
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 gap-4">
+                  <div>
+                    <TooltipLabel
+                      htmlFor="eventType"
+                      label="Tipo de Evento"
+                      tooltip="Seleccione el tipo de evento para el que está creando la cotización"
+                      required
+                    />
+                    <Select
+                      value={formData.eventType}
+                      onValueChange={(value) => setFormData(prev => ({
+                        ...prev,
+                        eventType: value
+                      }))}
+                    >
+                      <SelectTrigger id="eventType">
+                        <SelectValue placeholder="Seleccione un tipo de evento" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="A">Tipo A - Eventos Grandes</SelectItem>
+                        <SelectItem value="B">Tipo B - Eventos Medianos</SelectItem>
+                        <SelectItem value="C">Tipo C - Eventos Pequeños</SelectItem>
+                        <SelectItem value="D">Tipo D - Eventos Especiales</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-            <TabsContent value="platform" className="space-y-6">
-              <div className="grid grid-cols-1 gap-6">
-                <div className="space-y-4">
-                  <TooltipLabel
-                    htmlFor="platform.name"
-                    label="Plataforma de Ticketing"
-                    tooltip="Selecciona la plataforma que se utilizará"
-                    required
-                  />
-                  <Select 
-                    value={formData.platform.name} 
-                    onValueChange={handlePlatformChange}
-                  >
-                    <SelectTrigger id="platform.name" className="w-full">
-                      <SelectValue placeholder="Seleccionar plataforma" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="TICKET_PLUS">Ticket Plus</SelectItem>
-                      <SelectItem value="PALCO4">Palco 4</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-4">
-                  <TooltipLabel
-                    htmlFor="platform.percentage"
-                    label="Comisión de Plataforma (%)"
-                    tooltip="Porcentaje que cobra la plataforma por ticket (costo)"
-                    required
-                  />
-                  <Input
-                    id="platform.percentage"
-                    name="platform.percentage"
-                    type="number"
-                    value={formData.platform.percentage}
-                    onChange={handleInputChange}
-                    className="w-full"
-                    placeholder="Ej: 0.16"
-                    required
-                  />
-                </div>
-                <div className="space-y-4">
-                  <TooltipLabel
-                    htmlFor="additionalServicesPercentage"
-                    label="Servicios Adicionales (%)"
-                    tooltip="Porcentaje por servicios adicionales (ingreso)"
-                    required={false}
-                  />
-                  <Input
-                    id="additionalServicesPercentage"
-                    name="additionalServicesPercentage"
-                    type="number"
-                    value={formData.additionalServicesPercentage}
-                    onChange={handleInputChange}
-                    className="w-full"
-                    placeholder="Ej: 2"
-                  />
-                </div>
-              </div>
-            </TabsContent>
+          {/* Tickets Tab Content */}
+          <TabsContent value="tickets">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-xl flex items-center gap-2">
+                  <Ticket className="h-5 w-5 text-primary" />
+                  Sectores y Precios de Tickets
+                </CardTitle>
+                <CardDescription>
+                  Configure los sectores, precios y cargos por servicio para los tickets de su evento
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <TicketSectorForm
+                  initialSectors={formData.ticketSectors}
+                  onChange={(sectors) => {
+                    // Use a deep comparison to avoid updating state unnecessarily
+                    const currentSectors = JSON.stringify(formData.ticketSectors);
+                    const newSectors = JSON.stringify(sectors);
+                    
+                    if (currentSectors !== newSectors) {
+                      setFormData(prev => ({
+                        ...prev,
+                        ticketSectors: sectors
+                      }));
+                    }
+                  }}
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-            <TabsContent value="payments" className="space-y-6">
-              <div className="space-y-6">
+          {/* Platform Tab Content */}
+          <TabsContent value="platform" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-xl flex items-center gap-2">
+                  <Building2 className="h-5 w-5 text-primary" />
+                  Configuración de Plataforma
+                </CardTitle>
+                <CardDescription>
+                  Configure los detalles de la plataforma y los servicios adicionales
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <TooltipLabel
+                      htmlFor="platform.name"
+                      label="Plataforma"
+                      tooltip="Seleccione la plataforma que se utilizará para la venta de tickets"
+                    />
+                    <Select
+                      value={formData.platform.name}
+                      onValueChange={(value: "TICKET_PLUS" | "PALCO4") => setFormData(prev => ({
+                        ...prev,
+                        platform: {
+                          ...prev.platform,
+                          name: value
+                        }
+                      }))}
+                    >
+                      <SelectTrigger id="platform.name">
+                        <SelectValue placeholder="Seleccione una plataforma" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="TICKET_PLUS">Ticket Plus</SelectItem>
+                        <SelectItem value="PALCO4">Palco 4</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <TooltipLabel
+                      htmlFor="platform.percentage"
+                      label="Porcentaje de Comisión"
+                      tooltip="El porcentaje que la plataforma cobra por cada ticket vendido"
+                    />
+                    <div className="relative">
+                      <Input
+                        id="platform.percentage"
+                        name="platform.percentage"
+                        type="number"
+                        value={formData.platform.percentage}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setFormData(prev => ({
+                            ...prev,
+                            platform: {
+                              ...prev.platform,
+                              percentage: value
+                            }
+                          }));
+                        }}
+                        className="pr-8"
+                        placeholder="Ej: 5"
+                        step="0.01"
+                        min="0"
+                      />
+                      <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                        <Percent className="h-4 w-4 text-gray-400" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-4">
+                  <div className="space-y-2">
+                    <TooltipLabel
+                      htmlFor="additionalServicesPercentage"
+                      label="Porcentaje de Servicios Adicionales"
+                      tooltip="El porcentaje adicional que se cobra por servicios complementarios"
+                    />
+                    <div className="relative">
+                      <Input
+                        id="additionalServicesPercentage"
+                        name="additionalServicesPercentage"
+                        type="number"
+                        value={formData.additionalServicesPercentage}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setFormData(prev => ({
+                            ...prev,
+                            additionalServicesPercentage: value
+                          }));
+                        }}
+                        className="pr-8"
+                        placeholder="Ej: 0.5"
+                        step="0.01"
+                        min="0"
+                      />
+                      <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                        <Percent className="h-4 w-4 text-gray-400" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Payments Tab Content */}
+          <TabsContent value="payments" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-xl flex items-center gap-2">
+                  <CreditCard className="h-5 w-5 text-primary" />
+                  Métodos de Pago
+                </CardTitle>
+                <CardDescription>
+                  Configure las comisiones por cada método de pago y quién asume el costo
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
                 {/* Tarjeta de Crédito */}
-                <div className="border p-4 rounded-lg">
-                  <TooltipLabel
-                    htmlFor="paymentMethods.credit.percentage"
-                    label="Tarjeta de Crédito"
-                    tooltip="Configuración para pagos con tarjeta de crédito"
-                    required={false}
-                  />
-                  <div className="grid grid-cols-2 gap-4 mt-2">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold flex items-center gap-2">
+                      <CreditCard className="h-4 w-4" />
+                      Tarjeta de Crédito
+                    </h3>
+                    <Badge variant="outline" className="bg-primary/10">Más común</Badge>
+                  </div>
+                  <Separator />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <Label htmlFor="paymentMethods.credit.chargedTo">¿Quién absorbe?</Label>
+                      <TooltipLabel
+                        htmlFor="paymentMethods.credit.percentage"
+                        label="Comisión (%)"
+                        tooltip="Porcentaje de comisión cobrado por el procesador de pagos"
+                      />
+                      <div className="relative">
+                        <Input
+                          id="paymentMethods.credit.percentage"
+                          name="paymentMethods.credit.percentage"
+                          type="number"
+                          value={formData.paymentMethods.credit.percentage}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setFormData(prev => ({
+                              ...prev,
+                              paymentMethods: {
+                                ...prev.paymentMethods,
+                                credit: {
+                                  ...prev.paymentMethods.credit,
+                                  percentage: value
+                                }
+                              }
+                            }));
+                          }}
+                          className="pr-8"
+                          placeholder="Ej: 3.67"
+                          step="0.01"
+                          min="0"
+                        />
+                        <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                          <Percent className="h-4 w-4 text-gray-400" />
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <TooltipLabel
+                        htmlFor="paymentMethods.credit.chargedTo"
+                        label="Cobrado a"
+                        tooltip="A quién se le cobra la comisión de la tarjeta de crédito"
+                      />
                       <Select
                         value={formData.paymentMethods.credit.chargedTo}
-                        onValueChange={(value: "US" | "CLIENT" | "CONSUMER") => {
-                          handlePaymentMethodChargeToChange("credit", value)
-                        }}
+                        onValueChange={(value: "US" | "CLIENT" | "CONSUMER") => setFormData(prev => ({
+                          ...prev,
+                          paymentMethods: {
+                            ...prev.paymentMethods,
+                            credit: {
+                              ...prev.paymentMethods.credit,
+                              chargedTo: value
+                            }
+                          }
+                        }))}
                       >
                         <SelectTrigger id="paymentMethods.credit.chargedTo">
-                          <SelectValue placeholder="Seleccionar">
-                            {formData.paymentMethods.credit.chargedTo === "US" ? "Nosotros" : 
-                             formData.paymentMethods.credit.chargedTo === "CLIENT" ? "Cliente" : 
-                             formData.paymentMethods.credit.chargedTo === "CONSUMER" ? "Consumidor" : "Seleccionar"}
-                          </SelectValue>
+                          <SelectValue placeholder="Seleccione a quién se le cobra" />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="US">Nosotros</SelectItem>
@@ -986,59 +1194,74 @@ export function QuotationForm() {
                           <SelectItem value="CONSUMER">Consumidor</SelectItem>
                         </SelectContent>
                       </Select>
-                    </div>
-                    <div>
-                      <Label htmlFor="paymentMethods.credit.percentage">Comisión (%)</Label>
-                      <Input
-                        id="paymentMethods.credit.percentage"
-                        name="paymentMethods.credit.percentage"
-                        type="number"
-                        value={formData.paymentMethods.credit.percentage}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setFormData(prev => ({
-                            ...prev,
-                            paymentMethods: {
-                              ...prev.paymentMethods,
-                              credit: {
-                                ...prev.paymentMethods.credit,
-                                percentage: value
-                              }
-                            }
-                          }));
-                        }}
-                        className="w-full"
-                        placeholder="Ej: 3.67"
-                        step="0.01"
-                        min="0"
-                      />
                     </div>
                   </div>
                 </div>
 
                 {/* Tarjeta de Débito */}
-                <div className="border p-4 rounded-lg">
-                  <TooltipLabel
-                    htmlFor="paymentMethods.debit.percentage"
-                    label="Tarjeta de Débito"
-                    tooltip="Configuración para pagos con tarjeta de débito"
-                    required={false}
-                  />
-                  <div className="grid grid-cols-2 gap-4 mt-2">
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <CreditCard className="h-4 w-4" />
+                    Tarjeta de Débito
+                  </h3>
+                  <Separator />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <Label htmlFor="paymentMethods.debit.chargedTo">¿Quién absorbe?</Label>
+                      <TooltipLabel
+                        htmlFor="paymentMethods.debit.percentage"
+                        label="Comisión (%)"
+                        tooltip="Porcentaje de comisión cobrado por el procesador de pagos"
+                      />
+                      <div className="relative">
+                        <Input
+                          id="paymentMethods.debit.percentage"
+                          name="paymentMethods.debit.percentage"
+                          type="number"
+                          value={formData.paymentMethods.debit.percentage}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setFormData(prev => ({
+                              ...prev,
+                              paymentMethods: {
+                                ...prev.paymentMethods,
+                                debit: {
+                                  ...prev.paymentMethods.debit,
+                                  percentage: value
+                                }
+                              }
+                            }));
+                          }}
+                          className="pr-8"
+                          placeholder="Ej: 0.8"
+                          step="0.01"
+                          min="0"
+                        />
+                        <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                          <Percent className="h-4 w-4 text-gray-400" />
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <TooltipLabel
+                        htmlFor="paymentMethods.debit.chargedTo"
+                        label="Cobrado a"
+                        tooltip="A quién se le cobra la comisión de la tarjeta de débito"
+                      />
                       <Select
                         value={formData.paymentMethods.debit.chargedTo}
-                        onValueChange={(value: "US" | "CLIENT" | "CONSUMER") => {
-                          handlePaymentMethodChargeToChange("debit", value)
-                        }}
+                        onValueChange={(value: "US" | "CLIENT" | "CONSUMER") => setFormData(prev => ({
+                          ...prev,
+                          paymentMethods: {
+                            ...prev.paymentMethods,
+                            debit: {
+                              ...prev.paymentMethods.debit,
+                              chargedTo: value
+                            }
+                          }
+                        }))}
                       >
                         <SelectTrigger id="paymentMethods.debit.chargedTo">
-                          <SelectValue placeholder="Seleccionar">
-                            {formData.paymentMethods.debit.chargedTo === "US" ? "Nosotros" : 
-                             formData.paymentMethods.debit.chargedTo === "CLIENT" ? "Cliente" : 
-                             formData.paymentMethods.debit.chargedTo === "CONSUMER" ? "Consumidor" : "Seleccionar"}
-                          </SelectValue>
+                          <SelectValue placeholder="Seleccione a quién se le cobra" />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="US">Nosotros</SelectItem>
@@ -1046,59 +1269,74 @@ export function QuotationForm() {
                           <SelectItem value="CONSUMER">Consumidor</SelectItem>
                         </SelectContent>
                       </Select>
-                    </div>
-                    <div>
-                      <Label htmlFor="paymentMethods.debit.percentage">Comisión (%)</Label>
-                      <Input
-                        id="paymentMethods.debit.percentage"
-                        name="paymentMethods.debit.percentage"
-                        type="number"
-                        value={formData.paymentMethods.debit.percentage}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setFormData(prev => ({
-                            ...prev,
-                            paymentMethods: {
-                              ...prev.paymentMethods,
-                              debit: {
-                                ...prev.paymentMethods.debit,
-                                percentage: value
-                              }
-                            }
-                          }));
-                        }}
-                        className="w-full"
-                        placeholder="Ej: 0.8"
-                        step="0.01"
-                        min="0"
-                      />
                     </div>
                   </div>
                 </div>
 
                 {/* Efectivo */}
-                <div className="border p-4 rounded-lg">
-                  <TooltipLabel
-                    htmlFor="paymentMethods.cash.percentage"
-                    label="Efectivo"
-                    tooltip="Configuración para pagos en efectivo"
-                    required={false}
-                  />
-                  <div className="grid grid-cols-2 gap-4 mt-2">
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <CircleDollarSign className="h-4 w-4" />
+                    Efectivo
+                  </h3>
+                  <Separator />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <Label htmlFor="paymentMethods.cash.chargedTo">¿Quién absorbe?</Label>
+                      <TooltipLabel
+                        htmlFor="paymentMethods.cash.percentage"
+                        label="Comisión (%)"
+                        tooltip="Porcentaje de comisión por pagos en efectivo"
+                      />
+                      <div className="relative">
+                        <Input
+                          id="paymentMethods.cash.percentage"
+                          name="paymentMethods.cash.percentage"
+                          type="number"
+                          value={formData.paymentMethods.cash.percentage}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setFormData(prev => ({
+                              ...prev,
+                              paymentMethods: {
+                                ...prev.paymentMethods,
+                                cash: {
+                                  ...prev.paymentMethods.cash,
+                                  percentage: value
+                                }
+                              }
+                            }));
+                          }}
+                          className="pr-8"
+                          placeholder="Ej: 0"
+                          step="0.01"
+                          min="0"
+                        />
+                        <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                          <Percent className="h-4 w-4 text-gray-400" />
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <TooltipLabel
+                        htmlFor="paymentMethods.cash.chargedTo"
+                        label="Cobrado a"
+                        tooltip="A quién se le cobra la comisión para pagos en efectivo"
+                      />
                       <Select
                         value={formData.paymentMethods.cash.chargedTo}
-                        onValueChange={(value: "US" | "CLIENT" | "CONSUMER") => {
-                          handlePaymentMethodChargeToChange("cash", value)
-                        }}
+                        onValueChange={(value: "US" | "CLIENT" | "CONSUMER") => setFormData(prev => ({
+                          ...prev,
+                          paymentMethods: {
+                            ...prev.paymentMethods,
+                            cash: {
+                              ...prev.paymentMethods.cash,
+                              chargedTo: value
+                            }
+                          }
+                        }))}
                       >
                         <SelectTrigger id="paymentMethods.cash.chargedTo">
-                          <SelectValue placeholder="Seleccionar">
-                            {formData.paymentMethods.cash.chargedTo === "US" ? "Nosotros" : 
-                             formData.paymentMethods.cash.chargedTo === "CLIENT" ? "Cliente" : 
-                             formData.paymentMethods.cash.chargedTo === "CONSUMER" ? "Consumidor" : "Seleccionar"}
-                          </SelectValue>
+                          <SelectValue placeholder="Seleccione a quién se le cobra" />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="US">Nosotros</SelectItem>
@@ -1107,357 +1345,448 @@ export function QuotationForm() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div>
-                      <Label htmlFor="paymentMethods.cash.percentage">Comisión (%)</Label>
-                      <Input
-                        id="paymentMethods.cash.percentage"
-                        name="paymentMethods.cash.percentage"
-                        type="number"
-                        value={formData.paymentMethods.cash.percentage}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setFormData(prev => ({
-                            ...prev,
-                            paymentMethods: {
-                              ...prev.paymentMethods,
-                              cash: {
-                                ...prev.paymentMethods.cash,
-                                percentage: value
-                              }
-                            }
-                          }));
-                        }}
-                        className="w-full"
-                        placeholder="Ej: 0.5"
-                        step="0.01"
-                        min="0"
-                      />
-                    </div>
                   </div>
                 </div>
-              </div>
-            </TabsContent>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-            <TabsContent value="operational" className="space-y-6">
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Costos Operativos</h3>
-                
-                {/* Empleados */}
+          {/* Operational Tab Content */}
+          <TabsContent value="operational" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-xl flex items-center gap-2">
+                  <Users className="h-5 w-5 text-primary" />
+                  Personal y Credenciales
+                </CardTitle>
+                <CardDescription>
+                  Configure el personal necesario para el evento y los costos de credenciales
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
                 <div className="space-y-4">
-                  <h4 className="font-medium">Personal</h4>
-                  
-                  {/* Mostrar mensaje si no hay tipos de personal disponibles */}
-                  {employeeTypes.length === 0 && (
-                    <div className="text-yellow-600 p-2 bg-yellow-50 rounded mb-4">
-                      No hay tipos de personal configurados. Por favor, agregue tipos de personal en la configuración.
-                    </div>
-                  )}
-                  
-                  {formData.employees.map((employee, index) => (
-                    <div key={index} className="grid grid-cols-3 gap-4 p-4 border rounded-lg">
-                      <div>
-                        <Label>Tipo de Personal</Label>
-                        <Select
-                          value={employee.employeeTypeId}
-                          onValueChange={(value) => {
-                            const newEmployees = [...formData.employees];
-                            newEmployees[index].employeeTypeId = value;
+                  <div className="grid grid-cols-1 gap-4">
+                    <div>
+                      <TooltipLabel
+                        htmlFor="credentialsCost"
+                        label="Costo de Credenciales"
+                        tooltip="Costo total de las credenciales para el personal del evento"
+                      />
+                      <div className="relative">
+                        <Input
+                          id="credentialsCost"
+                          name="credentialsCost"
+                          type="number"
+                          value={formData.credentialsCost}
+                          onChange={(e) => {
+                            const value = e.target.value;
                             setFormData(prev => ({
                               ...prev,
-                              employees: newEmployees
+                              credentialsCost: value
                             }));
                           }}
+                          className="pl-8"
+                          placeholder="Ej: 10000"
+                        />
+                        <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                          <span className="text-gray-500 text-sm">$</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      Personal
+                    </h3>
+                    <Separator />
+                    
+                    {employeeTypes.length > 0 ? (
+                      <div className="space-y-6">
+                        {formData.employees.map((employee, index) => (
+                          <div key={index} className="border rounded-lg p-4 space-y-4">
+                            <div className="flex items-center justify-between">
+                              <h4 className="font-medium">{employeeTypes.find(et => et.id === employee.employeeTypeId)?.name || 'Empleado'}</h4>
+                              {formData.employees.length > 1 && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => {
+                                    const updatedEmployees = formData.employees.filter((_, i) => i !== index);
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      employees: updatedEmployees
+                                    }));
+                                  }}
+                                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                >
+                                  <X className="h-4 w-4" />
+                                  <span className="sr-only">Eliminar empleado</span>
+                                </Button>
+                              )}
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <Label htmlFor={`employee-type-${index}`}>Tipo de Empleado</Label>
+                                <Select
+                                  value={employee.employeeTypeId}
+                                  onValueChange={(value) => {
+                                    const updatedEmployees = [...formData.employees];
+                                    updatedEmployees[index].employeeTypeId = value;
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      employees: updatedEmployees
+                                    }));
+                                  }}
+                                >
+                                  <SelectTrigger id={`employee-type-${index}`}>
+                                    <SelectValue placeholder="Seleccione un tipo de empleado" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {employeeTypes.map((type) => (
+                                      <SelectItem key={type.id} value={type.id}>
+                                        {type.name} (${type.costPerDay}/día)
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div>
+                                <Label htmlFor={`employee-quantity-${index}`}>Cantidad</Label>
+                                <Input
+                                  id={`employee-quantity-${index}`}
+                                  type="number"
+                                  value={employee.quantity}
+                                  onChange={(e) => {
+                                    const updatedEmployees = [...formData.employees];
+                                    updatedEmployees[index].quantity = e.target.value;
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      employees: updatedEmployees
+                                    }));
+                                  }}
+                                  placeholder="Ej: 5"
+                                  min="1"
+                                />
+                              </div>
+                              <div>
+                                <Label htmlFor={`employee-days-${index}`}>Días</Label>
+                                <Input
+                                  id={`employee-days-${index}`}
+                                  type="number"
+                                  value={employee.days}
+                                  onChange={(e) => {
+                                    const updatedEmployees = [...formData.employees];
+                                    updatedEmployees[index].days = e.target.value;
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      employees: updatedEmployees
+                                    }));
+                                  }}
+                                  placeholder="Ej: 2"
+                                  min="1"
+                                />
+                              </div>
+                              <div className="flex items-end">
+                                <div className="w-full px-4 py-2 bg-muted rounded flex justify-between items-center">
+                                  <span className="text-sm">Costo Total:</span>
+                                  <span className="font-medium">
+                                    ${(
+                                      Number(employee.quantity) * 
+                                      Number(employee.days) * 
+                                      (employeeTypes.find(et => et.id === employee.employeeTypeId)?.costPerDay || 0)
+                                    ).toLocaleString('es-AR')}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setFormData(prev => ({
+                              ...prev,
+                              employees: [
+                                ...prev.employees,
+                                {
+                                  employeeTypeId: employeeTypes[0]?.id || "",
+                                  quantity: "1",
+                                  days: "1"
+                                }
+                              ]
+                            }));
+                          }}
+                          className="flex items-center gap-2"
                         >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Seleccionar tipo" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {employeeTypes.length > 0 ? (
-                              employeeTypes.map((type) => (
-                                <SelectItem key={type.id} value={type.id}>
-                                  {type.name} (${type.costPerDay}/día)
-                                </SelectItem>
-                              ))
-                            ) : (
-                              <SelectItem value="no-types" disabled>
-                                No hay tipos disponibles
-                              </SelectItem>
-                            )}
-                          </SelectContent>
-                        </Select>
+                          <Plus className="h-4 w-4" />
+                          Agregar Personal
+                        </Button>
                       </div>
-                      <div>
-                        <Label>Cantidad</Label>
-                        <Input
-                          type="number"
-                          value={employee.quantity}
-                          onChange={(e) => {
-                            const newEmployees = [...formData.employees];
-                            newEmployees[index].quantity = e.target.value;
-                            setFormData(prev => ({
-                              ...prev,
-                              employees: newEmployees
-                            }));
-                          }}
-                          min="1"
-                        />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center p-6 text-center border-2 border-dashed rounded-lg">
+                        <Users className="h-10 w-10 text-muted-foreground mb-2" />
+                        <p className="text-muted-foreground">No hay tipos de empleados disponibles</p>
                       </div>
-                      <div>
-                        <Label>Días</Label>
-                        <Input
-                          type="number"
-                          value={employee.days}
-                          onChange={(e) => {
-                            const newEmployees = [...formData.employees];
-                            newEmployees[index].days = e.target.value;
-                            setFormData(prev => ({
-                              ...prev,
-                              employees: newEmployees
-                            }));
-                          }}
-                          min="1"
-                        />
-                      </div>
-                      <Button
-                        variant="destructive"
-                        className="col-span-3"
-                        onClick={() => {
-                          setFormData(prev => ({
-                            ...prev,
-                            employees: prev.employees.filter((_, i) => i !== index)
-                          }));
-                        }}
-                      >
-                        Eliminar
-                      </Button>
-                    </div>
-                  ))}
-                  <Button
-                    variant="outline"
-                    type="button"
-                    onClick={() => {
-                      // Se añade type="button" para evitar que se envíe el formulario al hacer clic
-                      try {
-                        console.log("Clicked Agregar Personal button");
-                        
-                        // Valor por defecto si no hay tipos de empleado
-                        const defaultEmployeeTypeId = "temp-id-123";
-                        console.log("Empleados actuales:", formData.employees);
-                        
-                        // Creamos el nuevo arreglo directamente en lugar de usar setState con callback
-                        const newEmployees = [
-                          ...formData.employees,
-                          {
-                            employeeTypeId: defaultEmployeeTypeId,
-                            quantity: "1",
-                            days: "1"
-                          }
-                        ];
-                        console.log("Nuevos empleados:", newEmployees);
-                        
-                        // Actualizar el estado con los nuevos empleados
-                        setFormData({
-                          ...formData,
-                          employees: newEmployees
-                        });
-                      } catch (error) {
-                        console.error("Error al agregar personal:", error);
-                      }
-                    }}
-                  >
-                    Agregar Personal
-                  </Button>
+                    )}
+                  </div>
                 </div>
-
-                {/* Movilidad */}
-                <div className="space-y-4">
-                  <h4 className="font-medium">Movilidad</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <TooltipLabel
-                        htmlFor="mobilityKilometers"
-                        label="Kilómetros (ida y vuelta)"
-                        tooltip="Distancia total del recorrido en kilómetros"
-                      />
-                      <Input
-                        id="mobilityKilometers"
-                        name="mobilityKilometers"
-                        type="number"
-                        value={formData.mobilityKilometers}
-                        onChange={handleInputChange}
-                        min="0"
-                        placeholder="0"
-                      />
-                    </div>
-                    <div>
-                      <TooltipLabel
-                        htmlFor="numberOfTolls"
-                        label="Cantidad de Peajes"
-                        tooltip="Número total de peajes en el recorrido"
-                      />
-                      <Input
-                        id="numberOfTolls"
-                        name="numberOfTolls"
-                        type="number"
-                        value={formData.numberOfTolls}
-                        onChange={handleInputChange}
-                        min="0"
-                        placeholder="0"
-                      />
-                    </div>
-                    <div>
-                      <TooltipLabel
-                        htmlFor="tollsCost"
-                        label="Costo por Peaje"
-                        tooltip="Costo promedio por peaje"
-                      />
-                      <Input
-                        id="tollsCost"
-                        name="tollsCost"
-                        type="number"
-                        value={formData.tollsCost}
-                        onChange={handleInputChange}
-                        min="0"
-                        placeholder="0.00"
-                      />
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-xl flex items-center gap-2">
+                  <CircleDollarSign className="h-5 w-5 text-primary" />
+                  Movilidad y Peajes
+                </CardTitle>
+                <CardDescription>
+                  Configure los costos de transporte y peajes para el evento
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <TooltipLabel
+                      htmlFor="mobilityKilometers"
+                      label="Kilómetros de Movilidad"
+                      tooltip="Cantidad total de kilómetros a recorrer para el evento"
+                    />
+                    <Input
+                      id="mobilityKilometers"
+                      name="mobilityKilometers"
+                      type="number"
+                      value={formData.mobilityKilometers}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setFormData(prev => ({
+                          ...prev,
+                          mobilityKilometers: value
+                        }));
+                      }}
+                      placeholder="Ej: 100"
+                      min="0"
+                    />
+                  </div>
+                  <div>
+                    <TooltipLabel
+                      htmlFor="numberOfTolls"
+                      label="Número de Peajes"
+                      tooltip="Cantidad de peajes en el recorrido"
+                    />
+                    <Input
+                      id="numberOfTolls"
+                      name="numberOfTolls"
+                      type="number"
+                      value={formData.numberOfTolls}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setFormData(prev => ({
+                          ...prev,
+                          numberOfTolls: value
+                        }));
+                      }}
+                      placeholder="Ej: 2"
+                      min="0"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <TooltipLabel
+                    htmlFor="tollsCost"
+                    label="Costo por Peaje"
+                    tooltip="Costo promedio de cada peaje"
+                  />
+                  <div className="relative">
+                    <Input
+                      id="tollsCost"
+                      name="tollsCost"
+                      type="number"
+                      value={formData.tollsCost}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setFormData(prev => ({
+                          ...prev,
+                          tollsCost: value
+                        }));
+                      }}
+                      className="pl-8"
+                      placeholder="Ej: 800"
+                      min="0"
+                    />
+                    <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                      <span className="text-gray-500 text-sm">$</span>
                     </div>
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+            
+            <CustomOperationalCosts
+              value={formData.customOperationalCosts}
+              onChange={(costs) => {
+                setFormData(prev => ({
+                  ...prev,
+                  customOperationalCosts: costs
+                }));
+              }}
+            />
+          </TabsContent>
+        </Tabs>
 
-                {/* Costos operativos personalizados */}
-                <CustomOperationalCosts
-                  value={formData.customOperationalCosts}
-                  onChange={handleCustomOperationalCostsChange}
-                />
-              </div>
-            </TabsContent>
-          </Tabs>
+        <div className="flex justify-between mt-8 space-x-4">
+          <Button
+            variant="outline"
+            onClick={() => {
+              localStorage.removeItem('quotationFormData');
+              localStorage.removeItem('quotationActiveTab');
+              window.location.reload();
+            }}
+            className="flex items-center gap-2"
+          >
+            <X className="h-4 w-4" />
+            Limpiar Todo
+          </Button>
 
-          <div className="mt-8 flex justify-between items-center">
-            <div className="flex space-x-4">
-              {activeTab !== "event" && (
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    const tabs = ["event", "tickets", "platform", "payments", "operational"]
-                    const currentIndex = tabs.indexOf(activeTab)
-                    setActiveTab(tabs[currentIndex - 1])
-                  }}
-                >
-                  Anterior
-                </Button>
-              )}
-              {activeTab !== "operational" && (
-                <Button
-                  onClick={() => {
-                    const tabs = ["event", "tickets", "platform", "payments", "operational"]
-                    const currentIndex = tabs.indexOf(activeTab)
-                    setActiveTab(tabs[currentIndex + 1])
-                  }}
-                >
-                  Siguiente
-                </Button>
-              )}
-            </div>
+          <div className="flex space-x-2">
             <Button
+              disabled={isLoading}
               onClick={handleSubmit}
-              disabled={isLoading || !isFormValid()}
-              className="flex items-center space-x-2"
+              className="flex items-center gap-2"
             >
               {isLoading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Calculando...</span>
+                  Calculando...
                 </>
               ) : (
                 <>
                   <Calculator className="h-4 w-4" />
-                  <span>Calcular Cotización</span>
+                  Calcular Cotización
                 </>
               )}
             </Button>
-          </div>
-        </CardContent>
-      </Card>
 
-      {results && (
-        <>
-          <QuotationResultsComponent results={results} />
-          <div className="mt-6 flex justify-center">
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button className="flex items-center space-x-2">
-                  <Save className="h-4 w-4" />
-                  <span>Guardar Cotización</span>
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Guardar Cotización</DialogTitle>
-                  <DialogDescription>
-                    Ingrese un nombre para identificar esta cotización
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="quotationName">Nombre de la Cotización</Label>
-                    <Input
-                      id="quotationName"
-                      value={quotationName}
-                      onChange={(e) => setQuotationName(e.target.value)}
-                      placeholder="Ingrese un nombre para la cotización"
-                    />
-                  </div>
-                  
-                  <div>
-                    <Label htmlFor="estimatedPaymentDate">Fecha Estimada de Cobro</Label>
-                    <DatePicker
-                      id="estimatedPaymentDate"
-                      date={formData.estimatedPaymentDate ? new Date(formData.estimatedPaymentDate) : undefined}
-                      onSelect={(date) => setFormData(prev => ({
-                        ...prev,
-                        estimatedPaymentDate: date ? date.toISOString() : null
-                      }))}
-                      placeholder="Seleccione una fecha"
-                    />
-                  </div>
-                  
-                  <div>
-                    <Label htmlFor="paymentStatus">Estado de Pago</Label>
-                    <Select
-                      value={formData.paymentStatus}
-                      onValueChange={(value) => setFormData(prev => ({
-                        ...prev,
-                        paymentStatus: value as "PENDING" | "PAID"
-                      }))}
-                    >
-                      <SelectTrigger id="paymentStatus">
-                        <SelectValue placeholder="Seleccione el estado" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="PENDING">Pendiente</SelectItem>
-                        <SelectItem value="PAID">Pagado</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button onClick={handleSaveQuotation} disabled={isSaving || !quotationName}>
-                    {isSaving ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        Guardando...
-                      </>
-                    ) : (
-                      "Guardar"
-                    )}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+            {results && (
+              <Button
+                onClick={() => setIsSaveModalOpen(true)}
+                className="flex items-center gap-2"
+              >
+                <Save className="h-4 w-4" />
+                Guardar Cotización
+              </Button>
+            )}
           </div>
-        </>
+        </div>
+      </div>
+
+      {/* Panel de Resultados (ahora debajo del formulario) */}
+      {results && (
+        <Card className="mt-6 mb-8">
+          <CardHeader className="pb-3 border-b">
+            <CardTitle className="text-xl flex items-center gap-2">
+              <CircleDollarSign className="h-5 w-5 text-primary" />
+              Resultados
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-4">
+            <QuotationResultsComponent results={results} />
+          </CardContent>
+        </Card>
       )}
+
+      {/* Save Quotation Dialog */}
+      <Dialog open={isSaveModalOpen} onOpenChange={(open) => {
+        // Only set state if there's an actual change to prevent unnecessary re-renders
+        if (open !== isSaveModalOpen) {
+          setIsSaveModalOpen(open);
+        }
+      }}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Save className="h-5 w-5" />
+              Guardar Cotización
+            </DialogTitle>
+            <DialogDescription>
+              Complete la información para guardar esta cotización
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="quotationName">Nombre de la Cotización</Label>
+              <Input
+                id="quotationName"
+                value={quotationName}
+                onChange={(e) => setQuotationName(e.target.value)}
+                placeholder="Ej: Evento Primavera 2023"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="estimatedPaymentDate">Fecha Estimada de Pago</Label>
+              <DatePicker
+                date={formData.estimatedPaymentDate ? new Date(formData.estimatedPaymentDate) : undefined}
+                onSelect={(date) => {
+                  setFormData(prev => ({
+                    ...prev,
+                    estimatedPaymentDate: date ? format(date, 'yyyy-MM-dd') : null
+                  }));
+                }}
+                id="estimatedPaymentDate"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="paymentStatus">Estado de Pago</Label>
+              <Select
+                value={formData.paymentStatus}
+                onValueChange={(value) => setFormData(prev => ({
+                  ...prev,
+                  paymentStatus: value as "PENDING" | "PAID"
+                }))}
+              >
+                <SelectTrigger id="paymentStatus">
+                  <SelectValue placeholder="Seleccione el estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="PENDING">Pendiente</SelectItem>
+                  <SelectItem value="PAID">Pagado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter className="flex items-center justify-between">
+            <DialogClose asChild>
+              <Button variant="outline">Cancelar</Button>
+            </DialogClose>
+            <Button 
+              onClick={() => {
+                // First save the quotation
+                handleSaveQuotation();
+                // Then close the modal in a separate update cycle to avoid race conditions
+                setTimeout(() => setIsSaveModalOpen(false), 100);
+              }} 
+              disabled={isSaving || !quotationName}
+              className="flex items-center gap-2"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Guardando...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4" />
+                  Guardar
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

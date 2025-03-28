@@ -67,20 +67,33 @@ const QuotationSchema = z.object({
 });
 
 export async function GET() {
-  const session = await getServerSession()
+  const session = await getServerSession(authOptions)
 
   if (!session || !session.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
   try {
+    // Get user role
+    const user = await prismaClient.user.findUnique({
+      where: { id: session.user.id },
+      select: { role: true }
+    })
+
+    // Fetch quotations based on user role
     const quotations = await prismaClient.quotation.findMany({
-      where: { userId: session.user.id },
+      where: user?.role === "ADMIN" ? undefined : { userId: session.user.id },
       orderBy: { createdAt: "desc" },
       include: {
         ticketSectors: {
           include: {
             variations: true
+          }
+        },
+        user: {
+          select: {
+            name: true,
+            email: true
           }
         }
       }
@@ -101,11 +114,19 @@ export async function GET() {
         // Add an explicit ticketQuantity field for the frontend
         ticketQuantity: quotation.totalAmount,
         // Replace totalAmount with actual monetary value for display purposes
-        totalAmount: monetaryAmount || 0
+        totalAmount: monetaryAmount || 0,
+        // Include user information if it exists
+        user: quotation.user ? {
+          name: quotation.user.name,
+          email: quotation.user.email
+        } : undefined
       };
     });
     
-    return NextResponse.json(transformedQuotations)
+    return NextResponse.json({
+      quotations: transformedQuotations,
+      isAdmin: user?.role === "ADMIN"
+    })
   } catch (error) {
     console.error("Error fetching quotations:", error)
     return NextResponse.json({ error: "Failed to fetch quotations" }, { status: 500 })

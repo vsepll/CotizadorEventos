@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { PrismaClient } from "@prisma/client"
-import { differenceInDays } from "date-fns"
+import { differenceInDays, startOfDay, endOfDay } from "date-fns"
 
 const prisma = new PrismaClient()
 
@@ -43,22 +43,17 @@ export async function GET(request: Request) {
     // Obtener parámetros de la consulta
     const { searchParams } = new URL(request.url)
     const dateFrom = searchParams.get("dateFrom") 
-      ? new Date(searchParams.get("dateFrom") as string) 
-      : new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+      ? startOfDay(new Date(searchParams.get("dateFrom") as string))
+      : startOfDay(new Date(new Date().getFullYear(), new Date().getMonth(), 1))
     const dateTo = searchParams.get("dateTo") 
-      ? new Date(searchParams.get("dateTo") as string) 
-      : new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0)
+      ? endOfDay(new Date(searchParams.get("dateTo") as string))
+      : endOfDay(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0))
     const mode = searchParams.get("mode") || "creation"
     const status = searchParams.get("status") || "ALL"
     const monthlyFixedCosts = parseFloat(searchParams.get("monthlyFixedCosts") || "0") || await getMonthlyFixedCosts()
 
-    // Ajustar el fin del día para dateTo
-    dateTo.setHours(23, 59, 59, 999)
-
     // Construir la consulta para filtrar cotizaciones
-    const whereClause: any = {
-      userId: session.user.id
-    }
+    const whereClause: any = {}
 
     // Filtrar por fecha según el modo
     if (mode === "creation") {
@@ -72,6 +67,11 @@ export async function GET(request: Request) {
         gte: dateFrom,
         lte: dateTo
       }
+      // Solo incluir cotizaciones con fecha de pago estimada cuando se filtra por fecha de pago
+      whereClause.estimatedPaymentDate = {
+        not: null,
+        ...whereClause.estimatedPaymentDate
+      }
     }
 
     // Filtrar por estado de pago
@@ -79,13 +79,31 @@ export async function GET(request: Request) {
       whereClause.paymentStatus = status
     }
 
+    console.log('Filtros aplicados:', {
+      dateFrom: dateFrom.toISOString(),
+      dateTo: dateTo.toISOString(),
+      mode,
+      status,
+      whereClause
+    });
+
     // Obtener todas las cotizaciones que cumplen los criterios
     const quotations = await prisma.quotation.findMany({
       where: whereClause,
       orderBy: { 
         createdAt: "desc"
       },
+      include: {
+        user: {
+          select: {
+            name: true,
+            email: true
+          }
+        }
+      }
     })
+
+    console.log(`Se encontraron ${quotations.length} cotizaciones`);
 
     // Calcular el número de meses en el rango de fechas
     const daysDifference = differenceInDays(dateTo, dateFrom) + 1
@@ -112,7 +130,11 @@ export async function GET(request: Request) {
       grossProfitability: q.grossProfitability,
       createdAt: q.createdAt,
       estimatedPaymentDate: q.estimatedPaymentDate,
-      paymentStatus: q.paymentStatus
+      paymentStatus: q.paymentStatus,
+      user: q.user ? {
+        name: q.user.name,
+        email: q.user.email
+      } : null
     }))
 
     return NextResponse.json({
