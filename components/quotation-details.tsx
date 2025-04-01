@@ -20,6 +20,7 @@ interface QuotationData extends QuotationResults {
   ticketPrice: number
   createdAt: string
   userId: string
+  status?: 'DRAFT' | 'REVIEW' | 'APPROVED' | 'REJECTED'
 }
 
 interface QuotationDetailsProps {
@@ -32,6 +33,7 @@ export function QuotationDetails({ id }: QuotationDetailsProps) {
   const [availableQuotations, setAvailableQuotations] = useState<QuotationData[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isExporting, setIsExporting] = useState(false)
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
   const router = useRouter()
@@ -147,6 +149,57 @@ export function QuotationDetails({ id }: QuotationDetailsProps) {
     }
   }
 
+  const handleStatusChange = async (id: string, newStatus: 'review' | 'approved' | 'rejected') => {
+    const apiStatus = newStatus.toUpperCase() as 'REVIEW' | 'APPROVED' | 'REJECTED';
+    
+    if (!quotation) return;
+    
+    setIsUpdatingStatus(true);
+    try {
+      const response = await fetch(`/api/quotations/${id}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: apiStatus }),
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error al actualizar el estado');
+      }
+      
+      const updatedData = await response.json();
+      
+      setQuotation(prev => prev ? { ...prev, status: apiStatus } : null);
+      
+      toast({
+        title: 'Estado actualizado',
+        description: `La cotización ha sido ${ 
+          newStatus === 'approved' ? 'aprobada' : 
+          newStatus === 'rejected' ? 'rechazada' : 
+          'enviada a revisión'
+        } correctamente.`,
+      });
+      
+      if (newStatus === 'approved' || newStatus === 'rejected') {
+        setTimeout(() => {
+          router.push('/dashboard');
+        }, 1500);
+      }
+    } catch (error) {
+      console.error('Error al actualizar el estado:', error);
+      toast({
+        title: 'Error',
+        description: 'No se pudo actualizar el estado de la cotización. Por favor, intente nuevamente.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -248,65 +301,45 @@ export function QuotationDetails({ id }: QuotationDetailsProps) {
 
       {quotation && (
         <QuotationResultsComponent 
-          results={{
-            ticketQuantity: quotation.ticketQuantity,
-            platformFee: quotation.platformFee,
-            ticketingFee: quotation.ticketingFee,
-            additionalServices: quotation.additionalServices,
-            paywayFees: quotation.paywayFees,
-            palco4Cost: quotation.palco4Cost,
-            lineCost: quotation.lineCost,
-            operationalCosts: quotation.operationalCosts,
-            totalRevenue: quotation.totalRevenue,
-            totalCosts: quotation.totalCosts,
-            grossMargin: quotation.grossMargin,
-            grossProfitability: quotation.grossProfitability
-          }} 
-          comparisonResults={comparisonQuotation ? {
-            ticketQuantity: comparisonQuotation.ticketQuantity,
-            platformFee: comparisonQuotation.platformFee,
-            ticketingFee: comparisonQuotation.ticketingFee,
-            additionalServices: comparisonQuotation.additionalServices,
-            paywayFees: comparisonQuotation.paywayFees,
-            palco4Cost: comparisonQuotation.palco4Cost,
-            lineCost: comparisonQuotation.lineCost,
-            operationalCosts: comparisonQuotation.operationalCosts,
-            totalRevenue: comparisonQuotation.totalRevenue,
-            totalCosts: comparisonQuotation.totalCosts,
-            grossMargin: comparisonQuotation.grossMargin,
-            grossProfitability: comparisonQuotation.grossProfitability
-          } : undefined}
+          id={quotation.id}
+          results={quotation}
+          comparisonResults={comparisonQuotation}
+          status={quotation.status?.toLowerCase() as 'draft' | 'review' | 'approved' | 'rejected' | undefined || 'draft'}
+          onStatusChange={handleStatusChange}
         />
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Comparar con otra cotización</CardTitle>
-          <CardDescription>Selecciona otra cotización para comparar los resultados</CardDescription>
-        </CardHeader>
-        <CardContent className="flex items-center space-x-4">
-          <Select onValueChange={handleComparisonChange}>
-            <SelectTrigger className="w-[300px]">
-              <SelectValue placeholder="Seleccionar cotización" />
-            </SelectTrigger>
-            <SelectContent>
-              {availableQuotations.map((q) => (
-                <SelectItem key={q.id} value={q.id}>
-                  {q.name} - ${q.totalAmount.toLocaleString()}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {comparisonQuotation && (
+      {comparisonQuotation ? (
+        <div className="mt-8">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-medium">Comparando con: {comparisonQuotation.name}</h3>
             <Button 
-              variant="outline" 
+              variant="ghost" 
               onClick={() => setComparisonQuotation(null)}
             >
-              Limpiar Comparación
+              Eliminar comparación
             </Button>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-8">
+          <h3 className="text-lg font-medium mb-4">Comparar con otra cotización</h3>
+          <div className="flex gap-2">
+            <Select onValueChange={handleComparisonChange}>
+              <SelectTrigger className="w-[250px]">
+                <SelectValue placeholder="Seleccionar cotización" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableQuotations.map((q) => (
+                  <SelectItem key={q.id} value={q.id}>
+                    {q.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

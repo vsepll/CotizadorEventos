@@ -1,97 +1,248 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
-import { PrismaClient } from "@prisma/client"
-import redis from "@/lib/redis"
+import { prisma } from "@/lib/prisma"
+import redis, { getGlobalParametersVersion } from "@/lib/redis"
 
-const prisma = new PrismaClient()
+// Define schema for ticket variation
+const TicketVariationSchema = z.object({
+  name: z.string(),
+  price: z.number().positive(),
+  quantity: z.number().int().positive(),
+  serviceCharge: z.number().nonnegative(),
+  serviceChargeType: z.enum(["fixed", "percentage"])
+});
+
+// Define schema for ticket sector
+const TicketSectorSchema = z.object({
+  name: z.string(),
+  variations: z.array(TicketVariationSchema)
+});
 
 // Define the schema for input validation
 const QuotationInputSchema = z.object({
   eventType: z.enum(["A", "B", "C", "D"]),
-  totalAmount: z.number().positive(),
-  ticketPrice: z.number().positive(),
-  platformPercentage: z.number().min(0).max(100).optional(),
-  ticketingPercentage: z.number().min(0).max(100).optional(),
+  totalAmount: z.number().positive().optional(),
+  ticketPrice: z.number().positive().optional(),
+  platform: z.object({
+    name: z.enum(["TICKET_PLUS", "PALCO4"]),
+    percentage: z.number().min(0).max(100)
+  }),
   additionalServicesPercentage: z.number().min(0).max(100).optional(),
-  creditCardPercentage: z.number().min(0).max(100).optional(),
-  debitCardPercentage: z.number().min(0).max(100).optional(),
-  cashPercentage: z.number().min(0).max(100).optional(),
-  credentialsCost: z.number().nonnegative().optional(),
-  supervisorsCost: z.number().nonnegative().optional(),
-  operatorsCost: z.number().nonnegative().optional(),
-  mobilityCost: z.number().nonnegative().optional(),
+  paymentMethods: z.object({
+    credit: z.object({
+      percentage: z.number().min(0).max(100),
+      chargedTo: z.enum(["US", "CLIENT", "CONSUMER"]).default("CONSUMER")
+    }).optional(),
+    debit: z.object({
+      percentage: z.number().min(0).max(100),
+      chargedTo: z.enum(["US", "CLIENT", "CONSUMER"]).default("CONSUMER")
+    }).optional(),
+    cash: z.object({
+      percentage: z.number().min(0).max(100),
+      chargedTo: z.enum(["US", "CLIENT", "CONSUMER"]).default("CONSUMER")
+    }).optional()
+  }),
+  employees: z.array(z.object({
+    employeeTypeId: z.string(),
+    quantity: z.number().int().positive(),
+    days: z.number().int().positive()
+  })).optional().default([]),
+  mobilityKilometers: z.number().nonnegative().optional(),
+  numberOfTolls: z.number().int().nonnegative().optional(),
+  tollsCost: z.number().nonnegative().optional(),
+  customOperationalCosts: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    amount: z.number().nonnegative()
+  })).optional().default([]),
+  ticketSectors: z.array(TicketSectorSchema).optional().default([])
 })
 
 type QuotationInput = z.infer<typeof QuotationInputSchema>
 
-function calculateQuotation(input: QuotationInput, globalParameters: any) {
+async function calculateQuotation(input: QuotationInput, globalParameters: any) {
   const {
-    totalAmount,
-    ticketPrice,
-    platformPercentage = globalParameters.defaultPlatformFee,
-    ticketingPercentage = globalParameters.defaultTicketingFee,
-    additionalServicesPercentage = globalParameters.defaultAdditionalServicesFee,
-    creditCardPercentage = globalParameters.defaultCreditCardFee,
-    debitCardPercentage = globalParameters.defaultDebitCardFee,
-    cashPercentage = globalParameters.defaultCashFee,
-    credentialsCost = globalParameters.defaultCredentialsCost,
-    supervisorsCost = globalParameters.defaultSupervisorsCost,
-    operatorsCost = globalParameters.defaultOperatorsCost,
-    mobilityCost = globalParameters.defaultMobilityCost,
+    totalAmount = 0,
+    ticketPrice = 0,
+    platform,
+    additionalServicesPercentage = 0,
+    paymentMethods,
+    employees = [],
+    mobilityKilometers = 0,
+    numberOfTolls = 0,
+    tollsCost = 0,
+    customOperationalCosts = [],
+    ticketSectors = []
   } = input
 
-  // Calculate ticket quantity
-  const ticketQuantity = Math.round(totalAmount / ticketPrice)
+  // Calculate total ticket quantity and value based on sectors if available
+  let ticketQuantity = totalAmount;
+  let totalValue = ticketQuantity * ticketPrice;
 
-  // Calculate platform and ticketing fees
-  const platformFee = totalAmount * (platformPercentage / 100)
-  const ticketingFee = totalAmount * (ticketingPercentage / 100)
-
-  // Calculate additional services
-  const additionalServices = totalAmount * (additionalServicesPercentage / 100)
-
-  // Calculate Payway fees
-  const paywayFees = {
-    credit: totalAmount * (creditCardPercentage / 100),
-    debit: totalAmount * (debitCardPercentage / 100),
-    cash: totalAmount * (cashPercentage / 100),
-    total: 0,
+  // If ticket sectors are defined, recalculate totalValue based on them
+  if (ticketSectors.length > 0) {
+    let calculatedTotalValue = 0;
+    let calculatedTotalQuantity = 0;
+    
+    // Calculate total value from all sectors and their variations
+    ticketSectors.forEach(sector => {
+      sector.variations.forEach(variation => {
+        calculatedTotalValue += variation.price * variation.quantity;
+        calculatedTotalQuantity += variation.quantity;
+      });
+    });
+    
+    // Use the calculated values
+    totalValue = calculatedTotalValue;
+    ticketQuantity = calculatedTotalQuantity;
   }
-  paywayFees.total = paywayFees.credit + paywayFees.debit + paywayFees.cash
+  
+  // Validar que tenemos valores válidos para continuar
+  if (totalValue <= 0 || ticketQuantity <= 0) {
+    throw new Error("No se ha definido una cantidad válida de tickets o precios. Por favor, revise los sectores de tickets.");
+  }
 
-  // Calculate Palco 4 cost
-  const palco4Cost = ticketQuantity * globalParameters.palco4FeePerTicket
+  // Calculate platform fee (as a cost)
+  const platformFee = platform.name === "PALCO4" 
+    ? ticketQuantity * globalParameters.palco4FeePerTicket 
+    : totalValue * (platform.percentage / 100)
 
-  // Calculate Line cost
-  const lineCost = totalAmount * (globalParameters.lineCostPercentage / 100)
+  // Calculate service charge based on ticket variations
+  let ticketingFee = 0;
+  
+  // If ticket sectors are defined, calculate service charge based on them
+  if (ticketSectors.length > 0) {
+    console.log('Calculando cargo de servicio basado en sectores de tickets:', JSON.stringify(ticketSectors, null, 2));
+    
+    ticketSectors.forEach(sector => {
+      sector.variations.forEach(variation => {
+        const serviceCharge = variation.serviceCharge || 0;
+        const serviceChargeType = variation.serviceChargeType || "fixed";
+        
+        let charge = 0;
+        if (serviceChargeType === "fixed") {
+          // Fixed amount per ticket
+          charge = serviceCharge * variation.quantity;
+        } else {
+          // Percentage of ticket price
+          charge = (variation.price * variation.quantity) * (serviceCharge / 100);
+        }
+        
+        console.log(`Variación: ${variation.name}, Tipo: ${serviceChargeType}, Valor: ${serviceCharge}, Cargo calculado: ${charge}`);
+        ticketingFee += charge;
+      });
+    });
+    
+    console.log('Cargo de servicio total calculado:', ticketingFee);
+  }
+  
+  const additionalServices = totalValue * (additionalServicesPercentage / 100)
+
+  // Calculate payment fees
+  const creditFee = paymentMethods.credit 
+    ? totalValue * (paymentMethods.credit.percentage / 100)
+    : 0
+  const debitFee = paymentMethods.debit
+    ? totalValue * (paymentMethods.debit.percentage / 100)
+    : 0
+  const cashFee = paymentMethods.cash
+    ? totalValue * (paymentMethods.cash.percentage / 100)
+    : 0
+
+  // Calculate costs based on who absorbs the payment fees
+  const ourPaymentCosts = (
+    (paymentMethods.credit?.chargedTo === "US" ? creditFee : 0) +
+    (paymentMethods.debit?.chargedTo === "US" ? debitFee : 0) +
+    (paymentMethods.cash?.chargedTo === "US" ? cashFee : 0)
+  )
+
+  // Calculate Line cost (only if not using Palco4)
+  const lineCost = platform.name === "PALCO4" ? 0 : totalValue * (globalParameters.lineCostPercentage / 100)
+
+  // Calculate employee costs
+  let employeeCosts = 0
+  if (employees.length > 0) {
+    // Obtener todos los tipos de empleados necesarios
+    const employeeTypes = await prisma.employeeType.findMany({
+      where: {
+        id: {
+          in: employees.map(e => e.employeeTypeId)
+        }
+      }
+    })
+
+    // Calcular el costo total de empleados
+    employeeCosts = employees.reduce((total, employee) => {
+      const employeeType = employeeTypes.find(et => et.id === employee.employeeTypeId)
+      if (employeeType) {
+        return total + (employeeType.costPerDay * employee.quantity * employee.days)
+      }
+      return total
+    }, 0)
+  }
+
+  // Calculate mobility costs
+  const mobilityFuelCost = mobilityKilometers * (globalParameters.fuelCostPerLiter / globalParameters.kmPerLiter)
+  const totalMobilityCost = mobilityFuelCost + (numberOfTolls * tollsCost)
+
+  // Calculate custom operational costs total
+  const customOperationalCostsTotal = customOperationalCosts.reduce((sum, cost) => sum + Number(cost.amount), 0)
 
   // Calculate operational costs
   const operationalCosts = {
-    credentials: credentialsCost,
-    ticketing: ticketQuantity * globalParameters.ticketingCostPerTicket,
-    supervisors: supervisorsCost,
-    operators: operatorsCost,
-    mobility: mobilityCost,
-    total: 0,
+    credentials: Number(globalParameters.defaultCredentialsCost) || 0,
+    ticketing: platform.name === "PALCO4" ? 0 : ticketQuantity * globalParameters.ticketingCostPerTicket,
+    employees: employeeCosts,
+    mobility: totalMobilityCost,
+    custom: customOperationalCosts,
+    total: 0
   }
-  operationalCosts.total =
+
+  // Calculate total operational costs including custom costs
+  operationalCosts.total = 
     operationalCosts.credentials +
     operationalCosts.ticketing +
-    operationalCosts.supervisors +
-    operationalCosts.operators +
-    operationalCosts.mobility
+    operationalCosts.employees +
+    operationalCosts.mobility +
+    customOperationalCostsTotal
 
-  // Calculate total revenue
-  const totalRevenue = platformFee + ticketingFee + additionalServices
+  // Format payment fees for response
+  const paywayFees = {
+    credit: creditFee,
+    debit: debitFee,
+    cash: cashFee,
+    total: ourPaymentCosts
+  }
 
-  // Calculate total costs
-  const totalCosts = paywayFees.total + palco4Cost + lineCost + operationalCosts.total
+  // Calculate total revenue (ticketing fee + additional services)
+  const totalRevenue = ticketingFee + additionalServices
 
-  // Calculate gross margin
+  // Calculate total costs (platform fee + line cost + operational costs + our payment costs)
+  const totalCosts = platformFee + lineCost + operationalCosts.total + ourPaymentCosts
+
+  // Calculate gross margin and profitability
   const grossMargin = totalRevenue - totalCosts
+  const grossProfitability = totalRevenue > 0 ? (grossMargin / totalRevenue) * 100 : 0
 
-  // Calculate gross profitability
-  const grossProfitability = (grossMargin / totalRevenue) * 100
+  // Log calculations for debugging
+  console.log('Calculation details:', {
+    totalValue,
+    ticketQuantity,
+    ticketingFee,
+    additionalServices,
+    platformFee,
+    lineCost,
+    operationalCosts,
+    employeeCosts,
+    mobilityFuelCost,
+    totalMobilityCost,
+    customOperationalCostsTotal,
+    paywayFees,
+    totalRevenue,
+    totalCosts,
+    grossMargin,
+    grossProfitability
+  })
 
   return {
     ticketQuantity,
@@ -99,13 +250,23 @@ function calculateQuotation(input: QuotationInput, globalParameters: any) {
     ticketingFee,
     additionalServices,
     paywayFees,
-    palco4Cost,
+    palco4Cost: platform.name === "PALCO4" ? platformFee : 0,
     lineCost,
     operationalCosts,
     totalRevenue,
     totalCosts,
     grossMargin,
     grossProfitability,
+    ticketSectors: ticketSectors.map(sector => ({
+      name: sector.name,
+      variations: sector.variations.map(variation => ({
+        name: variation.name,
+        price: variation.price,
+        quantity: variation.quantity,
+        serviceCharge: variation.serviceCharge,
+        serviceChargeType: variation.serviceChargeType
+      }))
+    }))
   }
 }
 
@@ -121,13 +282,15 @@ async function ensureGlobalParameters() {
         defaultCreditCardFee: 3.67,
         defaultDebitCardFee: 0.8,
         defaultCashFee: 0.5,
-        defaultCredentialsCost: 216408,
-        defaultSupervisorsCost: 60000,
-        defaultOperatorsCost: 10000,
-        defaultMobilityCost: 25000,
+        defaultCredentialsCost: 0,
+        defaultSupervisorsCost: 0,
+        defaultOperatorsCost: 0,
+        defaultMobilityCost: 0,
         palco4FeePerTicket: 180,
         lineCostPercentage: 0.41,
         ticketingCostPerTicket: 5,
+        fuelCostPerLiter: 300,
+        kmPerLiter: 10
       }
     })
   }
@@ -142,22 +305,28 @@ export async function POST(request: Request) {
     const validatedInput = QuotationInputSchema.parse(body)
     console.log('Validated input:', validatedInput)
 
-    // Generate a cache key based on the input
-    const cacheKey = `quotation:${JSON.stringify(validatedInput)}`
+    // Obtener la versión actual de los parámetros globales
+    const currentParametersVersion = await getGlobalParametersVersion();
+
+    // Generate a cache key based on the input and parameters version
+    const cacheKey = `quotation:${JSON.stringify(validatedInput)}:pv:${currentParametersVersion || 'default'}`;
+    console.log('Cache key:', cacheKey);
 
     // Try to get the result from cache
     const cachedResult = await redis.get(cacheKey)
     if (cachedResult) {
+      console.log('Using cached result');
       return NextResponse.json(JSON.parse(cachedResult))
     }
 
-    // If not in cache, calculate the quotation
+    // Si no está en caché o la versión de los parámetros ha cambiado, recalcular
+    console.log('Calculating new result');
     const globalParameters = await ensureGlobalParameters()
     if (!globalParameters) {
       throw new Error("Failed to ensure global parameters")
     }
 
-    const results = calculateQuotation(validatedInput, globalParameters)
+    const results = await calculateQuotation(validatedInput, globalParameters)
     console.log('Calculation results:', results)
 
     // Store the result in cache with an expiration of 1 hour

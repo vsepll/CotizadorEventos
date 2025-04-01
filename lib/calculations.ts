@@ -33,6 +33,11 @@ export interface QuotationResults {
     supervisors: number
     operators: number
     mobility: number
+    custom: Array<{
+      id: string
+      name: string
+      amount: number
+    }>
     total: number
   }
   totalRevenue: number
@@ -90,6 +95,7 @@ export function calculateQuotation(input: QuotationInput): QuotationResults {
     supervisors: supervisorsCost,
     operators: operatorsCost,
     mobility: mobilityCost,
+    custom: [],
     total: 0,
   }
   operationalCosts.total =

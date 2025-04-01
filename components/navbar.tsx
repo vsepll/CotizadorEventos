@@ -12,10 +12,36 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { User, LogOut, Plus } from "lucide-react"
+import { User, LogOut, Plus, ClipboardCheck } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { useEffect, useState } from "react"
 
 export function Navbar() {
   const { data: session } = useSession()
+  const [reviewCount, setReviewCount] = useState(0)
+  
+  // Fetch the number of quotations in review status
+  useEffect(() => {
+    const fetchReviewCount = async () => {
+      try {
+        const response = await fetch("/api/quotations/stats", {
+          credentials: "include"
+        })
+        if (response.ok) {
+          const data = await response.json()
+          if (data.statusCounts && data.statusCounts.review) {
+            setReviewCount(data.statusCounts.review)
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching review count:", error)
+      }
+    }
+    
+    if (session) {
+      fetchReviewCount()
+    }
+  }, [session])
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -38,6 +64,18 @@ export function Navbar() {
               className="transition-colors hover:text-foreground/80 text-foreground/60"
             >
               Nueva Cotización
+            </Link>
+            <Link
+              href="/review-dashboard"
+              className="transition-colors hover:text-foreground/80 text-foreground/60 flex items-center gap-2"
+            >
+              <ClipboardCheck className="h-4 w-4" />
+              <span>En Revisión</span>
+              {reviewCount > 0 && (
+                <Badge className="bg-yellow-500 text-yellow-950 hover:bg-yellow-400">
+                  {reviewCount}
+                </Badge>
+              )}
             </Link>
           </nav>
         </div>

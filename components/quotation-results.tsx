@@ -1,61 +1,17 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Bar, BarChart, Line, LineChart, Pie, PieChart, XAxis, YAxis, Cell, Tooltip } from "recharts"
-import { ArrowDown, ArrowUp, DollarSign, Percent, Activity, CreditCard, Building, Users, LucideIcon } from "lucide-react"
+import { Bar, BarChart, Line, LineChart, Pie, PieChart, XAxis, YAxis, Cell, Tooltip, ResponsiveContainer } from "recharts"
+import { ArrowDown, ArrowUp, DollarSign, Percent, Activity, CreditCard, Building, Users, LucideIcon, TrendingDown, TrendingUp, CheckCircle, XCircle, Send } from "lucide-react"
+import { Separator } from "@/components/ui/separator"
+import { Button } from "@/components/ui/button"
+import { useMemo, useState } from "react"
 
 interface QuotationResultsProps {
-  results: {
-    ticketQuantity: number
-    platformFee: number
-    ticketingFee: number
-    additionalServices: number
-    paywayFees: {
-      credit: number
-      debit: number
-      cash: number
-      total: number
-    }
-    palco4Cost: number
-    lineCost: number
-    operationalCosts: {
-      credentials: number
-      ticketing: number
-      supervisors: number
-      operators: number
-      mobility: number
-      total: number
-    }
-    totalRevenue: number
-    totalCosts: number
-    grossMargin: number
-    grossProfitability: number
-  }
-  comparisonResults?: {
-    ticketQuantity: number
-    platformFee: number
-    ticketingFee: number
-    additionalServices: number
-    paywayFees: {
-      credit: number
-      debit: number
-      cash: number
-      total: number
-    }
-    palco4Cost: number
-    lineCost: number
-    operationalCosts: {
-      credentials: number
-      ticketing: number
-      supervisors: number
-      operators: number
-      mobility: number
-      total: number
-    }
-    totalRevenue: number
-    totalCosts: number
-    grossMargin: number
-    grossProfitability: number
-  }
+  id: string;
+  results: any; // Usar un tipo más flexible para evitar problemas de compatibilidad
+  comparisonResults?: any | null;
+  status?: 'draft' | 'review' | 'approved' | 'rejected';
+  onStatusChange: (id: string, newStatus: 'review' | 'approved' | 'rejected') => Promise<void>;
 }
 
 interface StatCardProps {
@@ -78,96 +34,165 @@ interface DetailCardProps {
   icon: LucideIcon;
 }
 
-export function QuotationResults({ results, comparisonResults }: QuotationResultsProps) {
+interface ResultCardProps {
+  title: string;
+  value: number;
+  trend?: number;
+  prefix?: string;
+  suffix?: string;
+  description?: string;
+  icon: LucideIcon;
+}
+
+const formatNumber = (value: number | null | undefined, options = {}) => {
+  if (value === null || value === undefined) return '0,00';
+  return value.toLocaleString('es-AR', { 
+    minimumFractionDigits: 2, 
+    maximumFractionDigits: 2,
+    ...options
+  });
+}
+
+const calculateTrend = (current: number, previous: number | undefined | null): number => {
+  if (!previous) return 0;
+  return ((current - previous) / previous) * 100;
+}
+
+// Memoized tooltip component
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload || !payload.length) return null;
+  
+  return (
+    <div className="bg-white p-2 border rounded shadow">
+      <p className="font-medium">{label}</p>
+      {payload.map((entry: any, index: number) => (
+        <p key={index} style={{ color: entry.color }}>
+          {entry.name}: ${formatNumber(entry.value)}
+        </p>
+      ))}
+    </div>
+  );
+};
+
+export function QuotationResults({ id, results, comparisonResults, status = 'draft', onStatusChange }: QuotationResultsProps) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   if (!results) {
     return null
   }
+  
+  console.log('Datos recibidos en QuotationResults:', {
+    ticketingFee: results.ticketingFee,
+    totalRevenue: results.totalRevenue,
+    ticketSectors: results.ticketSectors,
+    completeResults: results
+  });
 
-  const COLOR_PALETTE = {
+  const COLOR_PALETTE = useMemo(() => ({
     revenue: {
-      platform: "#3B82F6",      // Blue for platform fees
-      ticketing: "#10B981",     // Green for ticketing fees
-      additional: "#8B5CF6",    // Purple for additional services
+      service: "#3B82F6",
+      additional: "#8B5CF6",
     },
     costs: {
-      payway: "#F43F5E",        // Red for payment fees
-      palco4: "#F59E0B",        // Amber for Palco 4 costs
-      line: "#6366F1",          // Indigo for line costs
-      operational: "#14B8A6",   // Teal for operational costs
+      platform: "#F43F5E",
+      payway: "#F43F5E",
+      palco4: "#F59E0B",
+      line: "#6366F1",
+      operational: "#14B8A6",
     },
     profitability: {
-      revenue: "#10B981",       // Green for revenue
-      costs: "#F43F5E",         // Red for costs
-      margin: "#8B5CF6",        // Purple for gross margin
+      revenue: "#10B981",
+      costs: "#F43F5E",
+      margin: "#8B5CF6",
     }
-  }
+  }), []);
 
-  const revenueData = [
-    { 
-      name: "Comisión de Plataforma", 
-      value: results.platformFee,
-      color: COLOR_PALETTE.revenue.platform 
-    },
-    { 
-      name: "Comisión de Ticketing", 
-      value: results.ticketingFee,
-      color: COLOR_PALETTE.revenue.ticketing 
-    },
-    { 
-      name: "Servicios Adicionales", 
-      value: results.additionalServices,
-      color: COLOR_PALETTE.revenue.additional 
-    },
-  ]
+  const revenueData = useMemo(() => {
+    console.log('Construyendo revenueData con:', {
+      ticketingFee: results.ticketingFee,
+      additionalServices: results.additionalServices
+    });
+    
+    return [
+      { 
+        name: "Cargo por Servicio", 
+        value: Number(results.ticketingFee) || 0,
+        color: COLOR_PALETTE.revenue.service 
+      },
+      { 
+        name: "Servicios Adicionales", 
+        value: Number(results.additionalServices) || 0,
+        color: COLOR_PALETTE.revenue.additional 
+      },
+    ];
+  }, [results.ticketingFee, results.additionalServices, COLOR_PALETTE]);
 
-  const costsData = [
-    { 
-      name: "Comisiones de Pago", 
-      value: results.paywayFees.total,
-      color: COLOR_PALETTE.costs.payway 
-    },
-    { 
-      name: "Palco 4", 
-      value: results.palco4Cost,
-      color: COLOR_PALETTE.costs.palco4 
-    },
-    { 
-      name: "Line", 
-      value: results.lineCost,
-      color: COLOR_PALETTE.costs.line 
-    },
-    { 
-      name: "Costos Operativos", 
-      value: results.operationalCosts.total,
-      color: COLOR_PALETTE.costs.operational 
-    },
-  ]
+  const costsData = useMemo(() => {
+    // Make sure we have valid data
+    const validatedResults = results || {};
+    
+    console.log('Construyendo costsData con:', {
+      palco4Cost: validatedResults.palco4Cost,
+      paywayFees: validatedResults.paywayFees,
+      lineCost: validatedResults.lineCost,
+      operationalCosts: validatedResults.operationalCosts
+    });
+    
+    // Create array with all possible cost items
+    const allCosts = [
+      { 
+        name: "Palco 4", 
+        value: Number(validatedResults.palco4Cost) || 0,
+        color: COLOR_PALETTE.costs.platform 
+      },
+      { 
+        name: "Comisiones de Pago", 
+        value: Number(validatedResults.paywayFees?.total) || 0,
+        color: COLOR_PALETTE.costs.payway 
+      },
+      { 
+        name: "Line", 
+        value: Number(validatedResults.lineCost) || 0,
+        color: COLOR_PALETTE.costs.line 
+      },
+      { 
+        name: "Costos Operativos", 
+        value: Number(validatedResults.operationalCosts?.total) || 0,
+        color: COLOR_PALETTE.costs.operational 
+      },
+    ];
+    
+    // Filter out zero-value costs and sort by value (largest first)
+    return allCosts
+      .filter(item => item.value > 0)
+      .sort((a, b) => b.value - a.value);
+  }, [results?.palco4Cost, results?.paywayFees?.total, results?.lineCost, results?.operationalCosts?.total, COLOR_PALETTE]);
 
-  const profitabilityData = [
+  const profitabilityData = useMemo(() => [
     { 
       name: "Ingresos", 
-      value: results.totalRevenue,
+      value: Number(results.totalRevenue) || 0,
       color: COLOR_PALETTE.profitability.revenue 
     },
     { 
       name: "Costos", 
-      value: results.totalCosts,
+      value: Number(results.totalCosts) || 0,
       color: COLOR_PALETTE.profitability.costs 
     },
     { 
       name: "Margen Bruto", 
-      value: results.grossMargin,
+      value: Number(results.grossMargin) || 0,
       color: COLOR_PALETTE.profitability.margin 
     },
-  ]
+  ], [results.totalRevenue, results.totalCosts, results.grossMargin, COLOR_PALETTE]);
 
   const getPercentageDifference = (value1: number, value2: number) => {
     if (value1 === 0) return 0
     return ((value2 - value1) / value1) * 100
   }
 
-  const StatCard = ({ title, value, trend = 0, prefix = "$", suffix = "", icon: Icon }: StatCardProps) => (
-    <Card className="overflow-hidden transition-all hover:shadow-lg">
+  const StatCard = ({ title, value, trend, prefix = "$", suffix = "", icon: Icon }: StatCardProps) => (
+    <Card className="overflow-hidden transition-all hover:shadow-md">
       <CardHeader className="pb-2">
         <div className="flex items-center space-x-2">
           {Icon && <Icon className="w-4 h-4 text-muted-foreground" />}
@@ -177,13 +202,13 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
       <CardContent>
         <div className="flex items-center justify-between">
           <div className="space-y-1">
-            <p className="text-2xl font-bold">
-              {prefix}{typeof value === 'number' ? value.toFixed(2) : '0.00'}{suffix}
+            <p className="text-xl font-bold">
+              {prefix}{formatNumber(value)}{suffix}
             </p>
-            {trend !== 0 && (
-              <p className={`text-sm flex items-center ${trend > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {trend > 0 ? <ArrowUp className="w-4 h-4 mr-1" /> : <ArrowDown className="w-4 h-4 mr-1" />}
-                {Math.abs(trend)}%
+            {trend !== undefined && trend !== 0 && (
+              <p className={`text-xs flex items-center ${trend > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {trend > 0 ? <ArrowUp className="w-3 h-3 mr-1" /> : <ArrowDown className="w-3 h-3 mr-1" />}
+                {formatNumber(Math.abs(trend), { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
               </p>
             )}
           </div>
@@ -193,7 +218,7 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
   )
 
   const DetailCard = ({ title, items, icon: Icon }: DetailCardProps) => (
-    <Card className="overflow-hidden transition-all hover:shadow-lg">
+    <Card className="overflow-hidden transition-all hover:shadow-md">
       <CardHeader className="pb-2">
         <div className="flex items-center space-x-2">
           <Icon className="w-4 h-4 text-muted-foreground" />
@@ -201,15 +226,20 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
         </div>
       </CardHeader>
       <CardContent>
-        <div className="space-y-2">
-          {items.map((item, index) => (
-            <div key={index} className="flex justify-between items-center py-1 border-b last:border-0">
-              <span className="text-sm text-muted-foreground">{item.label}</span>
-              <span className="font-medium">
-                ${typeof item.value === 'number' ? item.value.toFixed(2) : '0.00'}
+        <div className="space-y-3">
+          {items.filter(item => item.value > 0).map((item, index) => (
+            <div key={index} className="flex justify-between items-center gap-4">
+              <span className="text-sm text-muted-foreground flex-shrink whitespace-nowrap">
+                {item.label}
+              </span>
+              <span className="text-base font-semibold text-foreground whitespace-nowrap">
+                ${formatNumber(item.value)}
               </span>
             </div>
           ))}
+          {items.every(item => item.value <= 0) && (
+            <p className="text-sm text-muted-foreground text-center py-2">Sin datos</p>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -365,215 +395,382 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
 
   // Update PieChart rendering to use custom colors
   const CustomPieChart = ({ data, title }: { data: any[], title: string }) => (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
+    <Card className="overflow-hidden transition-all hover:shadow-lg">
+      <CardHeader className="pb-0">
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
       </CardHeader>
-      <CardContent className="flex justify-center items-center">
-        <PieChart width={300} height={300}>
-          <Pie
-            data={data}
-            cx="50%"
-            cy="50%"
-            labelLine={false}
-            outerRadius={80}
-            fill="#8884d8"
-            dataKey="value"
-            nameKey="name"
-          >
-            {data.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={entry.color} />
-            ))}
-          </Pie>
-          <Tooltip 
-            formatter={(value) => [`$${Number(value).toFixed(2)}`, "Valor"]}
-            labelFormatter={(name) => name}
-          />
-        </PieChart>
+      <CardContent>
+        <div className="h-[250px] flex items-center justify-center">
+          {data.length === 0 ? (
+            <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+              No hay datos para mostrar
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={data}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={80}
+                  paddingAngle={2}
+                  dataKey="value"
+                  isAnimationActive={true}
+                  animationBegin={0}
+                  animationDuration={800}
+                  labelLine={true}
+                >
+                  {data.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip 
+                  contentStyle={{ backgroundColor: "#1F1F1F", borderRadius: "4px", border: "none" }}
+                  formatter={(value: number, name: string, props: any) => [`$${formatNumber(value)}`, name]}
+                  isAnimationActive={false}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </div>
       </CardContent>
     </Card>
   )
 
   // Update BarChart rendering to use custom colors
   const CustomBarChart = ({ data, title }: { data: any[], title: string }) => (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
+    <Card className="overflow-hidden">
+      <CardHeader className="pb-0">
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
       </CardHeader>
-      <CardContent>
-        <BarChart width={400} height={300} data={data}>
-          <XAxis dataKey="name" />
-          <YAxis />
-          <Tooltip 
-            formatter={(value) => [`$${Number(value).toFixed(2)}`, "Valor"]}
-            labelFormatter={(name) => name}
-          />
-          <Bar dataKey="value" fill="#8884d8">
-            {data.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={entry.color} />
-            ))}
-          </Bar>
-        </BarChart>
+      <CardContent className="pb-4">
+        <div className="h-[300px] w-full">
+          {data.length === 0 ? (
+            <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+              No hay datos de costos para mostrar
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart 
+                data={data} 
+                layout="vertical"
+                barCategoryGap={12}
+                margin={{ top: 10, right: 30, bottom: 10, left: 120 }}
+              >
+                <XAxis 
+                  type="number" 
+                  domain={[0, 'dataMax']} 
+                  tickFormatter={(value) => `$${value.toLocaleString()}`}
+                />
+                <YAxis 
+                  type="category" 
+                  width={115}
+                  dataKey="name" 
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: "#1F1F1F", borderRadius: "4px", border: "none" }}
+                  formatter={(value: number) => [`$${formatNumber(value)}`, ""]}
+                  cursor={{ fill: "rgba(255, 255, 255, 0.1)" }}
+                  isAnimationActive={false}
+                />
+                <Bar 
+                  dataKey="value" 
+                  fill="#8884d8"
+                  radius={[4, 4, 4, 4]} 
+                  isAnimationActive={true}
+                  animationBegin={0}
+                  animationDuration={800}
+                >
+                  {data.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
       </CardContent>
     </Card>
   )
 
+  // Convert number to currency format
+  const formatCurrency = (value: number) => {
+    return value.toLocaleString('es-AR', { 
+      style: 'currency',
+      currency: 'ARS',
+    });
+  }
+
+  // Safer approach to get operational costs
+  const getOperationalCosts = () => {
+    const opCosts = results.operationalCosts || {};
+    const custom = Array.isArray(opCosts.custom) 
+        ? opCosts.custom 
+        : (Array.isArray(opCosts.customCosts) ? opCosts.customCosts : []);
+    const customTotal = custom.reduce((sum: number, cost: any) => sum + (Number(cost?.amount) || 0), 0);
+
+    return {
+      credentials: typeof opCosts.credentials === 'number' ? opCosts.credentials : 0,
+      // Assuming 'employees' on results is the total employee cost calculated in the backend
+      employees: typeof opCosts.employees === 'number' ? opCosts.employees : 0,
+      mobility: typeof opCosts.mobility === 'number' ? opCosts.mobility : 0,
+      // Include ticketing cost if available
+      ticketing: typeof opCosts.ticketing === 'number' ? opCosts.ticketing : 0, 
+      customTotal: customTotal,
+       // Keep original custom array if needed elsewhere, but customTotal is likely enough for DetailCard
+      // custom: custom, 
+      total: opCosts.total || 0 // Use total if available, otherwise sum might be needed
+    };
+  };
+
+  // --- Define getTicketInfo function --- 
+  const getTicketInfo = () => {
+    const ticketItems: DetailCardItem[] = [];
+    
+    // Assuming these fields exist on the main results object
+    if (results.ticketQuantity != null && results.ticketQuantity > 0) {
+      ticketItems.push({ label: "Cantidad de Tickets", value: results.ticketQuantity });
+    }
+    if (results.ticketingFee != null && results.ticketingFee > 0) {
+      ticketItems.push({ label: "Cargo por Servicio Total", value: results.ticketingFee });
+    }
+    if (results.additionalServices != null && results.additionalServices > 0) {
+      ticketItems.push({ label: "Servicios Adicionales", value: results.additionalServices });
+    }
+    if (results.lineCost != null && results.lineCost > 0) {
+      ticketItems.push({ label: "Costo \"Line\"", value: results.lineCost });
+    }
+     if (results.palco4Cost != null && results.palco4Cost > 0) {
+      ticketItems.push({ label: "Costo Palco4", value: results.palco4Cost });
+    }
+     if (results.paywayFees?.total != null && results.paywayFees.total > 0) {
+      ticketItems.push({ label: "Comisiones Pago", value: results.paywayFees.total });
+    }
+
+    return ticketItems;
+  }
+  // --- End define getTicketInfo --- 
+
+  const operationalCostsObject = useMemo(() => getOperationalCosts(), [results]);
+  const ticketInfo = useMemo(() => getTicketInfo(), [results]);
+
+  // --- Transform operationalCosts for DetailCard --- 
+  const operationalCostsForCard: DetailCardItem[] = useMemo(() => {
+    const items: DetailCardItem[] = [];
+    if (operationalCostsObject.credentials > 0) {
+      items.push({ label: "Credenciales", value: operationalCostsObject.credentials });
+    }
+     if (operationalCostsObject.ticketing > 0) { // Added ticketing
+      items.push({ label: "Ticketing", value: operationalCostsObject.ticketing });
+    }
+    if (operationalCostsObject.employees > 0) {
+      items.push({ label: "Personal", value: operationalCostsObject.employees });
+    }
+    if (operationalCostsObject.mobility > 0) {
+      items.push({ label: "Movilidad", value: operationalCostsObject.mobility });
+    }
+     if (operationalCostsObject.customTotal > 0) {
+      items.push({ label: "Costos Op. Personalizados", value: operationalCostsObject.customTotal });
+    }
+    // Add other operational costs if they are separate properties in the object
+    return items;
+  }, [operationalCostsObject]);
+  // --- End transform --- 
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'draft':
+        return 'bg-gray-200 text-gray-700'
+      case 'review':
+        return 'bg-yellow-100 text-yellow-700'
+      case 'approved':
+        return 'bg-green-100 text-green-700'
+      case 'rejected':
+        return 'bg-red-100 text-red-700'
+      default:
+        return 'bg-gray-200 text-gray-700'
+    }
+  }
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'draft':
+        return 'Borrador'
+      case 'review':
+        return 'En Revisión'
+      case 'approved':
+        return 'Aprobada'
+      case 'rejected':
+        return 'Rechazada'
+      default:
+        return 'Borrador'
+    }
+  }
+
+  // --- Status Change Handlers ---
+  const handleStatusUpdate = async (newStatus: 'review' | 'approved' | 'rejected') => {
+    setIsSubmitting(true);
+    try {
+      await onStatusChange(id, newStatus);
+      // Optionally add success feedback here (e.g., toast notification)
+    } catch (error) {
+      console.error("Error updating status:", error);
+      // Optionally add error feedback here
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+  // --- End Status Change Handlers ---
+
   return (
-    <div className="mt-8 space-y-8">
-      <Card className="bg-white dark:bg-gray-800">
+    <div className="space-y-6">
+      <div className="flex justify-between items-center gap-4">
+        <h2 className="text-2xl font-bold">Resultados</h2>
+        <div className="flex items-center gap-2">
+          {/* Status Badge */}
+          <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(status)}`}>
+            {getStatusText(status)}
+          </span>
+          
+          {/* Action Buttons based on status */}
+          {status === 'draft' && (
+             <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => handleStatusUpdate('review')}
+              disabled={isSubmitting}
+            >
+              <Send className="mr-2 h-4 w-4" />
+              {isSubmitting ? 'Enviando...' : 'Enviar a Revisión'}
+            </Button>
+          )}
+          {status === 'review' && (
+            <>
+              <Button 
+                variant="destructive" 
+                size="sm" 
+                onClick={() => handleStatusUpdate('rejected')}
+                disabled={isSubmitting}
+              >
+                <XCircle className="mr-2 h-4 w-4" />
+                 {isSubmitting ? 'Rechazando...' : 'Rechazar'}
+              </Button>
+              <Button 
+                variant="default" 
+                size="sm" 
+                className="bg-green-600 hover:bg-green-700"
+                onClick={() => handleStatusUpdate('approved')}
+                disabled={isSubmitting}
+              >
+                <CheckCircle className="mr-2 h-4 w-4" />
+                 {isSubmitting ? 'Aprobando...' : 'Aprobar'}
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {status === 'review' && (
+        <Card className="bg-yellow-50 border-yellow-200">
+          <CardContent className="pt-6">
+            <div className="flex items-center space-x-2 text-yellow-700">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <p>Esta cotización está en revisión. Los valores no afectarán a las métricas generales hasta su aprobación.</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <StatCard 
+          title="Ingresos Totales" 
+          value={results.totalRevenue || 0} 
+          icon={DollarSign} 
+          trend={comparisonResults ? calculateTrend(results.totalRevenue, comparisonResults.totalRevenue) : undefined}
+        />
+        <StatCard 
+          title="Costos Totales" 
+          value={results.totalCosts || 0} 
+          icon={TrendingDown}
+          trend={comparisonResults ? calculateTrend(results.totalCosts, comparisonResults.totalCosts) : undefined} 
+        />
+        <StatCard 
+          title="Margen Bruto" 
+          value={results.grossMargin || 0} 
+          icon={TrendingUp}
+          trend={comparisonResults ? calculateTrend(results.grossMargin, comparisonResults.grossMargin) : undefined}
+        />
+        <StatCard 
+          title="Rentabilidad" 
+          value={results.grossProfitability || 0} 
+          icon={Percent} 
+          suffix="%" 
+          trend={comparisonResults ? results.grossProfitability - comparisonResults.grossProfitability : undefined}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-6">
+        {operationalCostsForCard.length > 0 && (
+            <DetailCard 
+              title="Costos Operativos" 
+              items={operationalCostsForCard}
+              icon={Building} 
+            />
+        )}
+        {ticketInfo.length > 0 && (
+            <DetailCard 
+              title="Información de Plataforma y Tickets"
+              items={ticketInfo} 
+              icon={Activity}
+            />
+        )}
+      </div>
+
+      <Card>
         <CardHeader>
-          <CardTitle className="text-xl font-bold">Análisis Financiero del Evento</CardTitle>
-          <CardDescription>Desglose detallado de ingresos, costos y rentabilidad</CardDescription>
+          <CardTitle>Análisis Gráfico</CardTitle>
+          <CardDescription>Visualización de ingresos, costos y rentabilidad.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="summary" className="space-y-4">
-            <TabsList className="grid grid-cols-4 gap-4 p-1 bg-muted rounded-lg">
-              <TabsTrigger value="summary" className="font-medium">
-                Resumen
-              </TabsTrigger>
-              <TabsTrigger value="revenue" className="font-medium">
-                Ingresos
-              </TabsTrigger>
-              <TabsTrigger value="costs" className="font-medium">
-                Costos
-              </TabsTrigger>
-              <TabsTrigger value="profitability" className="font-medium">
-                Rentabilidad
-              </TabsTrigger>
+          <Tabs defaultValue="costs-pie">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="costs-pie">Costos (Torta)</TabsTrigger>
+              <TabsTrigger value="revenue-pie">Ingresos (Torta)</TabsTrigger>
+              <TabsTrigger value="profit-bar">Rentabilidad (Barras)</TabsTrigger>
             </TabsList>
-
-            <TabsContent value="summary" className="space-y-6">
-              <div className="grid grid-cols-4 gap-4">
-                <StatCard
-                  title="Ingresos Totales"
-                  value={results.totalRevenue}
-                  icon={DollarSign}
-                />
-                <StatCard
-                  title="Costos Totales"
-                  value={results.totalCosts}
-                  icon={DollarSign}
-                />
-                <StatCard
-                  title="Margen Bruto"
-                  value={results.grossMargin}
-                  icon={DollarSign}
-                />
-                <StatCard
-                  title="Rentabilidad"
-                  value={results.grossProfitability}
-                  prefix=""
-                  suffix="%"
-                  icon={Percent}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-6">
-                <DetailCard
-                  title="Comisiones de Medios de Pago"
-                  icon={CreditCard}
-                  items={[
-                    { label: "Tarjeta de Crédito", value: results.paywayFees.credit },
-                    { label: "Tarjeta de Débito", value: results.paywayFees.debit },
-                    { label: "Efectivo", value: results.paywayFees.cash },
-                    { label: "Total Comisiones", value: results.paywayFees.total },
-                  ]}
-                />
-                <DetailCard
-                  title="Costos Operativos"
-                  icon={Building}
-                  items={[
-                    { label: "Credenciales", value: results.operationalCosts.credentials },
-                    { label: "Ticketing", value: results.operationalCosts.ticketing },
-                    { label: "Supervisores", value: results.operationalCosts.supervisors },
-                    { label: "Operadores", value: results.operationalCosts.operators },
-                    { label: "Movilidad", value: results.operationalCosts.mobility },
-                  ]}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-6">
-                <DetailCard
-                  title="Costos Adicionales"
-                  icon={Activity}
-                  items={[
-                    { label: "Palco 4", value: results.palco4Cost },
-                    { label: "Line", value: results.lineCost },
-                  ]}
-                />
-                <DetailCard
-                  title="Información de Tickets"
-                  icon={Users}
-                  items={[
-                    { label: "Cantidad de Tickets", value: results.ticketQuantity },
-                    { label: "Costo por Ticket", value: results.operationalCosts.ticketing / results.ticketQuantity },
-                  ]}
-                />
-              </div>
+            <TabsContent value="costs-pie" className="mt-4">
+              <CustomPieChart data={costsData} title="Desglose de Costos" />
             </TabsContent>
-
-            <TabsContent value="revenue" className="space-y-4">
+            <TabsContent value="revenue-pie" className="mt-4">
               <CustomPieChart data={revenueData} title="Desglose de Ingresos" />
-              <div className="grid grid-cols-3 gap-4">
-                {revenueData.map((item, index) => (
-                  <Card key={index} style={{ borderLeftColor: item.color, borderLeftWidth: '4px' }}>
-                    <CardContent className="pt-4 flex justify-between items-center">
-                      <div>
-                        <p className="text-sm text-muted-foreground">{item.name}</p>
-                        <p className="text-lg font-bold">${item.value.toFixed(2)}</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
             </TabsContent>
-            <TabsContent value="costs" className="space-y-4">
-              <CustomBarChart data={costsData} title="Desglose de Costos" />
-              <div className="grid grid-cols-2 gap-4">
-                {costsData.map((item, index) => (
-                  <Card key={index} style={{ borderLeftColor: item.color, borderLeftWidth: '4px' }}>
-                    <CardContent className="pt-4 flex justify-between items-center">
-                      <div>
-                        <p className="text-sm text-muted-foreground">{item.name}</p>
-                        <p className="text-lg font-bold">${item.value.toFixed(2)}</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </TabsContent>
-            <TabsContent value="profitability" className="space-y-4">
-              <CustomPieChart data={profitabilityData} title="Análisis de Rentabilidad" />
-              <div className="grid grid-cols-3 gap-4">
-                {profitabilityData.map((item, index) => (
-                  <Card key={index} style={{ borderLeftColor: item.color, borderLeftWidth: '4px' }}>
-                    <CardContent className="pt-4 flex justify-between items-center">
-                      <div>
-                        <p className="text-sm text-muted-foreground">{item.name}</p>
-                        <p className="text-lg font-bold">${item.value.toFixed(2)}</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+             <TabsContent value="profit-bar" className="mt-4">
+                <p className="text-center text-muted-foreground p-8">Gráfico de Rentabilidad (Barras) no implementado aún.</p>
             </TabsContent>
           </Tabs>
         </CardContent>
       </Card>
 
-      {/* Render comparison if it exists */}
       {comparisonResults && (
-        <Card className="bg-white dark:bg-gray-800">
-          <CardHeader>
-            <CardTitle className="text-xl font-bold">Análisis Comparativo</CardTitle>
-            <CardDescription>Comparación detallada entre cotizaciones</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {renderComparison()}
-          </CardContent>
-        </Card>
+         <Card>
+           <CardHeader>
+             <CardTitle>Análisis Comparativo</CardTitle>
+             <CardDescription>Comparación con cotización anterior.</CardDescription>
+           </CardHeader>
+           <CardContent>
+             {renderComparison()}
+           </CardContent>
+         </Card>
       )}
     </div>
-  )
+  );
 }
 

@@ -1,8 +1,6 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
@@ -11,18 +9,20 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  name      String?
-  email     String   @unique
-  password  String
-  role      String   @default("client")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
-  quotations  Quotation[]
+  id                     String                  @id @default(cuid())
+  name                   String?
+  email                  String                  @unique
+  password               String
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @default(now()) @updatedAt
+  role                   UserRole                @default(USER)
+  customOperationalCosts CustomOperationalCost[]
+  quotations             Quotation[]
+  employeeTypes          EmployeeType[]
 }
 
 model GlobalParameters {
-  id                           Int     @id @default(1)
+  id                           Int   @id @default(1)
   defaultPlatformFee           Float
   defaultTicketingFee          Float
   defaultAdditionalServicesFee Float
@@ -36,28 +36,111 @@ model GlobalParameters {
   palco4FeePerTicket           Float
   lineCostPercentage           Float
   ticketingCostPerTicket       Float
+  fuelCostPerLiter             Float @default(0)
+  kmPerLiter                   Float @default(10)
+  monthlyFixedCosts            Float @default(0)
 }
 
 model Quotation {
-  id                  String   @id @default(cuid())
-  name                String   // Nombre del evento
-  eventType           String   // Tipo de evento
-  totalAmount         Float    // Monto total
-  ticketPrice         Float    // Precio de entrada
-  platformFee         Float    // Comisión de plataforma
-  ticketingFee        Float    // Comisión de ticketing
-  additionalServices  Float    // Servicios adicionales
-  paywayFees         Json     // Comisiones de medios de pago
-  palco4Cost         Float    // Costo Palco 4
-  lineCost           Float    // Costo de línea
-  operationalCosts   Json     // Costos operativos
-  totalRevenue       Float    // Ingresos totales
-  totalCosts         Float    // Costos totales
-  grossMargin        Float    // Margen bruto
-  grossProfitability Float    // Rentabilidad bruta
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  user               User     @relation(fields: [userId], references: [id])
+  id                 String                @id @default(cuid())
+  name               String
+  eventType          String
+  totalAmount        Float
+  ticketPrice        Float
+  platformFee        Float
+  additionalServices Float
+  paywayFees         Json
+  palco4Cost         Float
+  lineCost           Float
+  operationalCosts   Json
+  totalRevenue       Float
+  totalCosts         Float
+  grossMargin        Float
+  grossProfitability Float
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
   userId             String
+  ticketingFee       Float
+  estimatedPaymentDate DateTime?
+  paymentStatus      String                @default("PENDING")
+  status             QuotationStatus       @default(DRAFT)
+  user               User                  @relation(fields: [userId], references: [id])
+  customCosts        QuotationCustomCost[]
+  ticketSectors      TicketSector[]
 }
 
+model TicketVariation {
+  id       String       @id @default(cuid())
+  name     String
+  price    Float
+  quantity Int
+  sectorId String
+  sector   TicketSector @relation(fields: [sectorId], references: [id], onDelete: Cascade)
+}
+
+model TicketSector {
+  id             String            @id @default(cuid())
+  name           String
+  quotationId    String
+  quotation      Quotation         @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  variations     TicketVariation[]
+}
+
+model GlobalCommission {
+  id         String   @id @default(cuid())
+  name       String
+  percentage Float
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
+
+model GlobalFixedExpense {
+  id        String   @id @default(cuid())
+  name      String
+  amount    Float
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model CustomOperationalCost {
+  id             String                @id @default(cuid())
+  name           String
+  description    String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  userId         String
+  user           User                  @relation(fields: [userId], references: [id])
+  quotationCosts QuotationCustomCost[]
+}
+
+model QuotationCustomCost {
+  id                      String                @id @default(cuid())
+  amount                  Float
+  quotationId             String
+  customOperationalCostId String
+  customOperationalCost   CustomOperationalCost @relation(fields: [customOperationalCostId], references: [id])
+  quotation               Quotation             @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+}
+
+model EmployeeType {
+  id         String   @id @default(cuid())
+  name       String
+  isOperator Boolean  @default(true)
+  costPerDay Float
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+  user       User     @relation(fields: [createdBy], references: [id])
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum QuotationStatus {
+  DRAFT
+  REVIEW
+  APPROVED
+  REJECTED
+}
