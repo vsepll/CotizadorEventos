@@ -5,6 +5,14 @@ import { PrismaClient } from "@prisma/client"
 
 const prisma = new PrismaClient()
 
+// These should match the enum values in the schema.prisma file
+const STATUS = {
+  DRAFT: 'DRAFT',
+  REVIEW: 'REVIEW',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED'
+};
+
 export async function GET() {
   const session = await getServerSession(authOptions)
 
@@ -19,8 +27,8 @@ export async function GET() {
       select: { role: true }
     })
 
-    // Fetch quotations based on user role
-    const quotations = await prisma.quotation.findMany({
+    // Fetch all quotations for recent list with status included
+    const allQuotations = await prisma.quotation.findMany({
       where: user?.role === "ADMIN" ? undefined : { userId: session.user.id },
       orderBy: { createdAt: "desc" },
       include: {
@@ -31,18 +39,24 @@ export async function GET() {
           }
         }
       }
-    })
+    }) as Array<any> // Type assertion to avoid TypeScript errors
+    
+    // Fetch only approved quotations for statistics
+    // Note: Using 'any' cast because the schema migration hasn't been applied yet
+    const approvedQuotations = allQuotations.filter(q => 
+      q.status === STATUS.APPROVED
+    );
 
-    // Calculate statistics
-    const totalQuotations = quotations.length
-    const totalRevenue = quotations.reduce((sum, q) => sum + q.totalRevenue, 0)
-    const totalCosts = quotations.reduce((sum, q) => sum + q.totalCosts, 0)
-    const averageProfitability = quotations.length > 0
-      ? quotations.reduce((sum, q) => sum + q.grossProfitability, 0) / quotations.length
+    // Calculate statistics from approved quotations only
+    const totalQuotations = approvedQuotations.length
+    const totalRevenue = approvedQuotations.reduce((sum, q) => sum + q.totalRevenue, 0)
+    const totalCosts = approvedQuotations.reduce((sum, q) => sum + q.totalCosts, 0)
+    const averageProfitability = approvedQuotations.length > 0
+      ? approvedQuotations.reduce((sum, q) => sum + q.grossProfitability, 0) / approvedQuotations.length
       : 0
 
     // Get the 5 most recent quotations with user info
-    const recentQuotations = quotations.slice(0, 5).map(q => ({
+    const recentQuotations = allQuotations.slice(0, 5).map(q => ({
       id: q.id,
       name: q.name,
       eventType: q.eventType,
@@ -50,14 +64,24 @@ export async function GET() {
       createdAt: q.createdAt,
       grossProfitability: q.grossProfitability,
       paymentStatus: q.paymentStatus,
+      status: q.status || STATUS.DRAFT, // Include status in the response, default to DRAFT if not set
       user: q.user
     }))
+    
+    // Get counts by status
+    const statusCounts = {
+      draft: allQuotations.filter(q => q.status === STATUS.DRAFT || !q.status).length,
+      review: allQuotations.filter(q => q.status === STATUS.REVIEW).length,
+      approved: allQuotations.filter(q => q.status === STATUS.APPROVED).length,
+      rejected: allQuotations.filter(q => q.status === STATUS.REJECTED).length,
+    }
 
     return NextResponse.json({
       totalQuotations,
       totalRevenue,
       totalCosts,
       averageProfitability,
+      statusCounts,
       recentQuotations,
       isAdmin: user?.role === "ADMIN"
     })

@@ -30,7 +30,7 @@ interface QuotationStats {
     totalAmount: number
     createdAt: string
     grossProfitability: number
-    paymentStatus: "PENDING" | "PAID"
+    paymentStatus: "PENDING" | "PAID" | "CONFIRMED"
     user?: {
       name: string | null
       email: string
@@ -108,11 +108,13 @@ export default function DashboardPage() {
     }
   }
 
-  const getStatusBadge = (status: "PENDING" | "PAID") => {
+  const getStatusBadge = (status: "PENDING" | "CONFIRMED" | "PAID") => {
     console.log("Generando badge para estado:", status)
     switch (status) {
       case "PAID":
         return <Badge className="bg-green-500 hover:bg-green-600">Pagado</Badge>
+      case "CONFIRMED":
+        return <Badge className="bg-blue-500 hover:bg-blue-600">Confirmado</Badge>
       case "PENDING":
         return <Badge variant="outline" className="hover:bg-muted">Pendiente</Badge>
       default:
@@ -224,6 +226,7 @@ export default function DashboardPage() {
                               className="h-8 px-2 rounded-md border border-input bg-background text-sm"
                             >
                               <option value="PENDING">Pendiente</option>
+                              <option value="CONFIRMED">Confirmado</option>
                               <option value="PAID">Pagado</option>
                             </select>
                           </div>

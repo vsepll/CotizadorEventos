@@ -109,7 +109,7 @@ export async function PATCH(
     const { paymentStatus } = await request.json()
 
     // Verificar que el estado sea válido
-    if (!["PENDING", "PAID"].includes(paymentStatus)) {
+    if (!["PENDING", "CONFIRMED", "PAID"].includes(paymentStatus)) {
       return NextResponse.json(
         { error: "Estado de pago inválido" },
         { status: 400 }

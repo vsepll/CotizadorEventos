@@ -63,6 +63,7 @@ model Quotation {
   ticketingFee       Float
   estimatedPaymentDate DateTime?
   paymentStatus      String                @default("PENDING")
+  status             QuotationStatus       @default(DRAFT)
   user               User                  @relation(fields: [userId], references: [id])
   customCosts        QuotationCustomCost[]
   ticketSectors      TicketSector[]
@@ -135,4 +136,11 @@ model EmployeeType {
 enum UserRole {
   USER
   ADMIN
+}
+
+enum QuotationStatus {
+  DRAFT
+  REVIEW
+  APPROVED
+  REJECTED
 }

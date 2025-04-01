@@ -43,6 +43,7 @@ interface Quotation {
   createdAt: string
   grossProfitability: number
   ticketQuantity: number
+  status?: string
   user?: {
     name: string | null
     email: string
@@ -54,7 +55,11 @@ interface QuotationResponse {
   isAdmin: boolean;
 }
 
-export function QuotationList() {
+interface QuotationListProps {
+  status?: string;
+}
+
+export function QuotationList({ status }: QuotationListProps) {
   const [quotations, setQuotations] = useState<Quotation[]>([])
   const [filteredQuotations, setFilteredQuotations] = useState<Quotation[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -70,7 +75,7 @@ export function QuotationList() {
 
   useEffect(() => {
     fetchQuotations()
-  }, [])
+  }, [status])
 
   useEffect(() => {
     filterQuotations()
@@ -78,7 +83,13 @@ export function QuotationList() {
 
   const fetchQuotations = async () => {
     try {
-      const response = await fetch("/api/quotations", {
+      // Build URL with status filter if provided
+      let url = "/api/quotations";
+      if (status) {
+        url += `?status=${status}`;
+      }
+      
+      const response = await fetch(url, {
         credentials: "include"
       })
       if (!response.ok) {

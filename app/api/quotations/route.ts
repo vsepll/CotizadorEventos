@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { PrismaClient } from "@prisma/client"
+import { PrismaClient, Prisma, QuotationStatus } from "@prisma/client"
 import { z } from "zod"
 import { findUserById } from "@/lib/activity.js"
 
@@ -63,10 +63,26 @@ const QuotationSchema = z.object({
   })).optional(),
   ticketSectors: z.array(TicketSectorSchema),
   estimatedPaymentDate: z.string().nullable().optional(),
-  paymentStatus: z.enum(["PENDING", "PAID"]).default("PENDING")
+  paymentStatus: z.enum(["PENDING", "CONFIRMED", "PAID"]).default("PENDING")
 });
 
-export async function GET() {
+// Combine with optional calculated fields for a single validation pass
+const QuotationInputSchema = QuotationSchema.extend({
+  platformFee: z.number().optional(),
+  ticketingFee: z.number().optional(),
+  additionalServices: z.number().optional(),
+  paywayFees: z.any().optional(),
+  operationalCosts: z.any().optional(),
+  totalRevenue: z.number().optional(),
+  totalCosts: z.number().optional(),
+  grossMargin: z.number().optional(),
+  grossProfitability: z.number().optional(),
+  palco4Cost: z.number().optional(),
+  lineCost: z.number().optional(),
+  ticketQuantity: z.number().optional()
+});
+
+export async function GET(request: Request) {
   const session = await getServerSession(authOptions)
 
   if (!session || !session.user) {
@@ -74,15 +90,46 @@ export async function GET() {
   }
 
   try {
+    // Get query parameters
+    const url = new URL(request.url);
+    const statusParam = url.searchParams.get('status');
+    
+    // Parse status parameter (could be a comma-separated list of statuses)
+    const statuses = statusParam ? statusParam.split(',').map(s => s.trim().toUpperCase()) : null;
+    
+    // Validate status values if provided
+    if (statuses && statuses.length > 0) {
+      const validStatuses = ["DRAFT", "REVIEW", "APPROVED", "REJECTED"];
+      const invalidStatuses = statuses.filter(s => !validStatuses.includes(s));
+      
+      if (invalidStatuses.length > 0) {
+        return NextResponse.json({ 
+          error: `Invalid status values: ${invalidStatuses.join(', ')}` 
+        }, { status: 400 });
+      }
+    }
+
     // Get user role
     const user = await prismaClient.user.findUnique({
       where: { id: session.user.id },
       select: { role: true }
     })
 
-    // Fetch quotations based on user role
+    // Build where condition
+    const whereCondition = {
+      // Filter by user ID unless admin
+      ...(user?.role !== "ADMIN" ? { userId: session.user.id } : {}),
+      // Filter by status if provided
+      ...(statuses && statuses.length > 0 ? {
+        status: {
+          in: statuses as any[] // Cast to any to avoid TypeScript issues with enum
+        }
+      } : {})
+    };
+
+    // Fetch quotations based on filters
     const quotations = await prismaClient.quotation.findMany({
-      where: user?.role === "ADMIN" ? undefined : { userId: session.user.id },
+      where: whereCondition,
       orderBy: { createdAt: "desc" },
       include: {
         ticketSectors: {
@@ -111,7 +158,6 @@ export async function GET() {
       return {
         ...quotation,
         // In our database, totalAmount stores the number of tickets
-        // Add an explicit ticketQuantity field for the frontend
         ticketQuantity: quotation.totalAmount,
         // Replace totalAmount with actual monetary value for display purposes
         totalAmount: monetaryAmount || 0,
@@ -200,123 +246,45 @@ export async function POST(request: Request) {
     console.log('Body before validation:', body);
     
     try {
-      const validatedData = QuotationSchema.parse(body);
-      console.log('Validated data before save:', validatedData);
+      // Validate the entire input body
+      const validatedInput = QuotationInputSchema.parse(body);
+      console.log('Validated input data:', validatedInput);
       
-      // Extraer los sectores de tickets para crear relaciones
-      const { ticketSectors, ...quotationData } = validatedData;
+      const { ticketSectors, ...quotationData } = validatedInput;
 
-      // Use calculation results if available (from the results object sent by the client),
-      // or calculate them if they're not provided
-      let platformFee, ticketingFee, additionalServices, paywayFees, operationalCosts, 
-          totalRevenue, totalCosts, grossMargin, grossProfitability, palco4Cost, lineCost;
-      
-      if (body.platformFee !== undefined && body.ticketingFee !== undefined) {
-        // If we have calculation results, use them
-        platformFee = body.platformFee;
-        ticketingFee = body.ticketingFee;
-        additionalServices = body.additionalServices || 0;
-        paywayFees = body.paywayFees || { credit: 0, debit: 0, cash: 0, total: 0 };
-        operationalCosts = body.operationalCosts || { 
-          credentials: 0, ticketing: 0, employees: 0, mobility: 0, custom: [], total: 0 
-        };
-        totalRevenue = body.totalRevenue || 0;
-        totalCosts = body.totalCosts || 0;
-        grossMargin = body.grossMargin || 0;
-        grossProfitability = body.grossProfitability || 0;
-        palco4Cost = body.palco4Cost || 0;
-        lineCost = body.lineCost || 0;
-      } else {
-        // Otherwise, calculate them from form data
-        platformFee = quotationData.platform.percentage;
-        
-        // El cargo por servicio ahora se calcula basado en cada variación de ticket
-        // Por lo que debemos calcularlo manualmente sumando los cargos de cada variación
-        let ticketingFee: number = 0;
-        console.log('Sectores de tickets para cálculo de cargo de servicio:', JSON.stringify(ticketSectors, null, 2));
+      // Use validated fields or defaults
+      const platformFee = validatedInput.platformFee ?? 0;
+      const ticketingFee = validatedInput.ticketingFee ?? 0;
+      const additionalServices = validatedInput.additionalServices ?? 0;
+      const paywayFees = validatedInput.paywayFees ?? { credit: 0, debit: 0, cash: 0, total: 0 };
+      const operationalCosts = validatedInput.operationalCosts ?? { 
+        credentials: 0, ticketing: 0, employees: 0, mobility: 0, custom: [], total: 0 
+      };
+      const totalRevenue = validatedInput.totalRevenue ?? 0;
+      const totalCosts = validatedInput.totalCosts ?? 0;
+      const grossMargin = validatedInput.grossMargin ?? 0;
+      const grossProfitability = validatedInput.grossProfitability ?? 0;
+      const palco4Cost = validatedInput.palco4Cost ?? 0;
+      const lineCost = validatedInput.lineCost ?? 0;
+      const paymentStatusValue = validatedInput.paymentStatus;
+      const ticketQuantity = validatedInput.ticketQuantity ?? ticketSectors.reduce((total, sector) => {
+         return total + sector.variations.reduce((sectorTotal, variation) => {
+           return sectorTotal + variation.quantity;
+         }, 0);
+       }, 0);
 
-        if (ticketSectors && ticketSectors.length > 0) {
-          ticketSectors.forEach((sector: { 
-            name: string; 
-            variations: Array<{
-              name: string;
-              price: number;
-              quantity: number;
-              serviceCharge?: number;
-              serviceChargeType?: "fixed" | "percentage";
-            }>;
-          }) => {
-            sector.variations.forEach((variation) => {
-              const serviceCharge = variation.serviceCharge || 0;
-              const serviceChargeType = variation.serviceChargeType || "fixed";
-              
-              let charge = 0;
-              if (serviceChargeType === "fixed") {
-                // Monto fijo por ticket
-                charge = serviceCharge * variation.quantity;
-              } else {
-                // Porcentaje del precio
-                charge = (variation.price * variation.quantity) * (serviceCharge / 100);
-              }
-              
-              console.log(`Variación: ${variation.name}, Tipo: ${serviceChargeType}, Valor: ${serviceCharge}, Cargo calculado: ${charge}`);
-              ticketingFee += charge;
-            });
-          });
-          
-          console.log('Cargo de servicio total calculado:', ticketingFee);
-        }
-        
-        additionalServices = quotationData.additionalServicesPercentage || 0;
-        
-        // Calcular tarifas de medios de pago
-        paywayFees = {
-          credit: quotationData.paymentMethods.credit.percentage || 0,
-          debit: quotationData.paymentMethods.debit.percentage || 0,
-          cash: quotationData.paymentMethods.cash.percentage || 0,
-          total: 0
-        };
-        
-        // Calcular el total de tarifas
-        paywayFees.total = paywayFees.credit + paywayFees.debit + paywayFees.cash;
-        
-        // Calcular costos operativos
-        operationalCosts = {
-          credentials: quotationData.credentialsCost || 0,
-          ticketing: 0, // Este valor se calculará en la lógica de negocios
-          employees: 0, // Se calculará basado en empleados
-          mobility: 0, // Se calculará basado en movilidad
-          custom: quotationData.customOperationalCosts || [],
-          total: 0
-        };
-        
-        // Set defaults for other calculated values
-        totalRevenue = 0;
-        totalCosts = 0;
-        grossMargin = 0;
-        grossProfitability = 0;
-        palco4Cost = 0;
-        lineCost = 0;
-      }
-      
-      // Crear la cotización con todos los campos requeridos por el modelo Prisma
+      // Crear la cotización
       const savedQuotation = await prismaClient.quotation.create({
         data: {
-          name: body.name || `Cotización ${new Date().toLocaleDateString()}`,
-          eventType: quotationData.eventType,
-          // totalAmount should store the actual ticket quantity (number of tickets)
-          // Calculate total ticket quantity from ticket sectors, or use the one from body if available
-          totalAmount: body.ticketQuantity || ticketSectors.reduce((total, sector) => {
-            return total + sector.variations.reduce((sectorTotal, variation) => {
-              return sectorTotal + variation.quantity;
-            }, 0);
-          }, 0),
-          ticketPrice: quotationData.ticketPrice,
+          name: validatedInput.name,
+          eventType: validatedInput.eventType,
+          totalAmount: ticketQuantity, 
+          ticketPrice: validatedInput.ticketPrice,
           platformFee: platformFee,
           ticketingFee: ticketingFee,
           additionalServices: additionalServices,
-          paywayFees: paywayFees as any, // Convertir a JSON para Prisma
-          operationalCosts: operationalCosts as any, // Convertir a JSON para Prisma
+          paywayFees: paywayFees as any, 
+          operationalCosts: operationalCosts as any,
           totalRevenue: totalRevenue, 
           totalCosts: totalCosts, 
           grossMargin: grossMargin, 
@@ -324,25 +292,22 @@ export async function POST(request: Request) {
           palco4Cost: palco4Cost, 
           lineCost: lineCost,
           userId: session.user.id,
-          // Nuevos campos
-          estimatedPaymentDate: body.estimatedPaymentDate ? new Date(body.estimatedPaymentDate) : null,
-          paymentStatus: body.paymentStatus || "PENDING",
-          // Crear sectores de tickets como relaciones anidadas
+          estimatedPaymentDate: validatedInput.estimatedPaymentDate ? new Date(validatedInput.estimatedPaymentDate) : null,
+          paymentStatus: paymentStatusValue, // Pass the validated string directly
+          status: QuotationStatus.REVIEW, // Explicitly set status to REVIEW
           ticketSectors: {
-            create: ticketSectors.map((sector: TicketSector) => ({
-              name: sector.name,
-              // Crear variaciones de tickets para cada sector
-              variations: {
-                create: sector.variations.map((variation: TicketVariation) => ({
-                  name: variation.name,
-                  price: variation.price,
-                  quantity: variation.quantity
-                }))
-              }
-            }))
-          }
+             create: ticketSectors.map((sector: any) => ({
+               name: sector.name,
+               variations: {
+                 create: sector.variations.map((variation: any) => ({
+                   name: variation.name,
+                   price: variation.price,
+                   quantity: variation.quantity
+                 }))
+               }
+             }))
+           }
         },
-        // Incluir sectores y variaciones en la respuesta
         include: {
           ticketSectors: {
             include: {
@@ -358,12 +323,15 @@ export async function POST(request: Request) {
       if (zodError instanceof z.ZodError) {
         return NextResponse.json({ error: zodError.errors }, { status: 400 });
       }
-      throw zodError; // Re-throw if it's not a ZodError
+      // Re-throw if it's not a ZodError to be caught by the outer catch block
+      throw zodError; 
     }
   } catch (error) {
     console.error("Error saving quotation:", error)
-    if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.errors }, { status: 400 })
+    // Check if it's a Prisma error (potentially from the create operation)
+    if (error instanceof Error && 'code' in error) {
+       // Handle known Prisma errors if needed, otherwise return a generic message
+       return NextResponse.json({ error: `Database error: ${error.message}` }, { status: 500 })
     }
     return NextResponse.json({ error: "Failed to save quotation" }, { status: 500 })
   }

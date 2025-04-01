@@ -1,13 +1,17 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Bar, BarChart, Line, LineChart, Pie, PieChart, XAxis, YAxis, Cell, Tooltip, ResponsiveContainer } from "recharts"
-import { ArrowDown, ArrowUp, DollarSign, Percent, Activity, CreditCard, Building, Users, LucideIcon, TrendingDown, TrendingUp } from "lucide-react"
+import { ArrowDown, ArrowUp, DollarSign, Percent, Activity, CreditCard, Building, Users, LucideIcon, TrendingDown, TrendingUp, CheckCircle, XCircle, Send } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
-import { useMemo } from "react"
+import { Button } from "@/components/ui/button"
+import { useMemo, useState } from "react"
 
 interface QuotationResultsProps {
+  id: string;
   results: any; // Usar un tipo más flexible para evitar problemas de compatibilidad
   comparisonResults?: any | null;
+  status?: 'draft' | 'review' | 'approved' | 'rejected';
+  onStatusChange: (id: string, newStatus: 'review' | 'approved' | 'rejected') => Promise<void>;
 }
 
 interface StatCardProps {
@@ -70,7 +74,9 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   );
 };
 
-export function QuotationResults({ results, comparisonResults }: QuotationResultsProps) {
+export function QuotationResults({ id, results, comparisonResults, status = 'draft', onStatusChange }: QuotationResultsProps) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   if (!results) {
     return null
   }
@@ -185,8 +191,8 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
     return ((value2 - value1) / value1) * 100
   }
 
-  const StatCard = ({ title, value, trend = 0, prefix = "$", suffix = "", icon: Icon }: StatCardProps) => (
-    <Card className="overflow-hidden transition-all hover:shadow-lg">
+  const StatCard = ({ title, value, trend, prefix = "$", suffix = "", icon: Icon }: StatCardProps) => (
+    <Card className="overflow-hidden transition-all hover:shadow-md">
       <CardHeader className="pb-2">
         <div className="flex items-center space-x-2">
           {Icon && <Icon className="w-4 h-4 text-muted-foreground" />}
@@ -196,12 +202,12 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
       <CardContent>
         <div className="flex items-center justify-between">
           <div className="space-y-1">
-            <p className="text-2xl font-bold">
+            <p className="text-xl font-bold">
               {prefix}{formatNumber(value)}{suffix}
             </p>
-            {trend !== 0 && (
-              <p className={`text-sm flex items-center ${trend > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {trend > 0 ? <ArrowUp className="w-4 h-4 mr-1" /> : <ArrowDown className="w-4 h-4 mr-1" />}
+            {trend !== undefined && trend !== 0 && (
+              <p className={`text-xs flex items-center ${trend > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {trend > 0 ? <ArrowUp className="w-3 h-3 mr-1" /> : <ArrowDown className="w-3 h-3 mr-1" />}
                 {formatNumber(Math.abs(trend), { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
               </p>
             )}
@@ -212,27 +218,28 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
   )
 
   const DetailCard = ({ title, items, icon: Icon }: DetailCardProps) => (
-    <Card className="overflow-hidden transition-all hover:shadow-lg bg-black text-white">
+    <Card className="overflow-hidden transition-all hover:shadow-md">
       <CardHeader className="pb-2">
         <div className="flex items-center space-x-2">
-          <Icon className="w-4 h-4 text-gray-400" />
-          <CardTitle className="text-sm font-medium text-gray-400">{title}</CardTitle>
+          <Icon className="w-4 h-4 text-muted-foreground" />
+          <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
         </div>
       </CardHeader>
       <CardContent>
-        <div className="space-y-4">
+        <div className="space-y-3">
           {items.filter(item => item.value > 0).map((item, index) => (
-            <div key={index} className="flex justify-between items-center">
-              <span className="text-sm text-gray-400">{item.label}</span>
-              <span className="text-lg font-semibold text-white">
-                ${item.value.toLocaleString('es-AR', { 
-                  minimumFractionDigits: 2, 
-                  maximumFractionDigits: 2,
-                  useGrouping: true 
-                })}
+            <div key={index} className="flex justify-between items-center gap-4">
+              <span className="text-sm text-muted-foreground flex-shrink whitespace-nowrap">
+                {item.label}
+              </span>
+              <span className="text-base font-semibold text-foreground whitespace-nowrap">
+                ${formatNumber(item.value)}
               </span>
             </div>
           ))}
+          {items.every(item => item.value <= 0) && (
+            <p className="text-sm text-muted-foreground text-center py-2">Sin datos</p>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -501,245 +508,269 @@ export function QuotationResults({ results, comparisonResults }: QuotationResult
   // Safer approach to get operational costs
   const getOperationalCosts = () => {
     const opCosts = results.operationalCosts || {};
-    
-    return {
-      credentials: {
-        total: typeof opCosts.credentials === 'number' ? opCosts.credentials : 0
-      },
-      employees: {
-        // If employees is just a number (total), use that number for operators
-        operators: typeof opCosts.employees === 'number' ? opCosts.employees : opCosts.employees?.operators || 0,
-        supervisors: opCosts.employees?.supervisors || 0
-      },
-      mobility: {
-        total: typeof opCosts.mobility === 'number' ? opCosts.mobility : 0
-      },
-      // Handle both custom and customCosts array structures
-      customCosts: Array.isArray(opCosts.custom) 
+    const custom = Array.isArray(opCosts.custom) 
         ? opCosts.custom 
-        : (Array.isArray(opCosts.customCosts) ? opCosts.customCosts : []),
-      total: opCosts.total || 0
+        : (Array.isArray(opCosts.customCosts) ? opCosts.customCosts : []);
+    const customTotal = custom.reduce((sum: number, cost: any) => sum + (Number(cost?.amount) || 0), 0);
+
+    return {
+      credentials: typeof opCosts.credentials === 'number' ? opCosts.credentials : 0,
+      // Assuming 'employees' on results is the total employee cost calculated in the backend
+      employees: typeof opCosts.employees === 'number' ? opCosts.employees : 0,
+      mobility: typeof opCosts.mobility === 'number' ? opCosts.mobility : 0,
+      // Include ticketing cost if available
+      ticketing: typeof opCosts.ticketing === 'number' ? opCosts.ticketing : 0, 
+      customTotal: customTotal,
+       // Keep original custom array if needed elsewhere, but customTotal is likely enough for DetailCard
+      // custom: custom, 
+      total: opCosts.total || 0 // Use total if available, otherwise sum might be needed
     };
   };
 
-  const operationalCosts = getOperationalCosts();
+  // --- Define getTicketInfo function --- 
+  const getTicketInfo = () => {
+    const ticketItems: DetailCardItem[] = [];
+    
+    // Assuming these fields exist on the main results object
+    if (results.ticketQuantity != null && results.ticketQuantity > 0) {
+      ticketItems.push({ label: "Cantidad de Tickets", value: results.ticketQuantity });
+    }
+    if (results.ticketingFee != null && results.ticketingFee > 0) {
+      ticketItems.push({ label: "Cargo por Servicio Total", value: results.ticketingFee });
+    }
+    if (results.additionalServices != null && results.additionalServices > 0) {
+      ticketItems.push({ label: "Servicios Adicionales", value: results.additionalServices });
+    }
+    if (results.lineCost != null && results.lineCost > 0) {
+      ticketItems.push({ label: "Costo \"Line\"", value: results.lineCost });
+    }
+     if (results.palco4Cost != null && results.palco4Cost > 0) {
+      ticketItems.push({ label: "Costo Palco4", value: results.palco4Cost });
+    }
+     if (results.paywayFees?.total != null && results.paywayFees.total > 0) {
+      ticketItems.push({ label: "Comisiones Pago", value: results.paywayFees.total });
+    }
 
-  // Calculate operations cost breakdown
-  const operationalCostsBreakdown = [
-    ...(operationalCosts.credentials.total > 0 ? [{
-      label: "Credenciales",
-      value: operationalCosts.credentials.total,
-      color: "#0EA5E9" // Light Blue
-    }] : []),
-    ...(operationalCosts.employees.operators > 0 ? [{
-      label: "Operadores",
-      value: operationalCosts.employees.operators,
-      color: "#EAB308" // Yellow
-    }] : []),
-    ...(operationalCosts.employees.supervisors > 0 ? [{
-      label: "Supervisores",
-      value: operationalCosts.employees.supervisors,
-      color: "#f59e0b" // Amber
-    }] : []),
-    ...(operationalCosts.mobility.total > 0 ? [{
-      label: "Movilidad",
-      value: operationalCosts.mobility.total,
-      color: "#84cc16" // Lime
-    }] : []),
-    ...(Array.isArray(operationalCosts.customCosts) && operationalCosts.customCosts.length > 0 
-      ? operationalCosts.customCosts.map((cost, index) => ({
-        label: cost.name || `Costo personalizado ${index + 1}`,
-        value: cost.amount || 0,
-        color: ["#0891b2", "#0d9488", "#14b8a6", "#06b6d4"][index % 4] // Cycle through colors
-      }))
-      : [])
-  ].filter(item => item.value > 0)
+    return ticketItems;
+  }
+  // --- End define getTicketInfo --- 
+
+  const operationalCostsObject = useMemo(() => getOperationalCosts(), [results]);
+  const ticketInfo = useMemo(() => getTicketInfo(), [results]);
+
+  // --- Transform operationalCosts for DetailCard --- 
+  const operationalCostsForCard: DetailCardItem[] = useMemo(() => {
+    const items: DetailCardItem[] = [];
+    if (operationalCostsObject.credentials > 0) {
+      items.push({ label: "Credenciales", value: operationalCostsObject.credentials });
+    }
+     if (operationalCostsObject.ticketing > 0) { // Added ticketing
+      items.push({ label: "Ticketing", value: operationalCostsObject.ticketing });
+    }
+    if (operationalCostsObject.employees > 0) {
+      items.push({ label: "Personal", value: operationalCostsObject.employees });
+    }
+    if (operationalCostsObject.mobility > 0) {
+      items.push({ label: "Movilidad", value: operationalCostsObject.mobility });
+    }
+     if (operationalCostsObject.customTotal > 0) {
+      items.push({ label: "Costos Op. Personalizados", value: operationalCostsObject.customTotal });
+    }
+    // Add other operational costs if they are separate properties in the object
+    return items;
+  }, [operationalCostsObject]);
+  // --- End transform --- 
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'draft':
+        return 'bg-gray-200 text-gray-700'
+      case 'review':
+        return 'bg-yellow-100 text-yellow-700'
+      case 'approved':
+        return 'bg-green-100 text-green-700'
+      case 'rejected':
+        return 'bg-red-100 text-red-700'
+      default:
+        return 'bg-gray-200 text-gray-700'
+    }
+  }
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'draft':
+        return 'Borrador'
+      case 'review':
+        return 'En Revisión'
+      case 'approved':
+        return 'Aprobada'
+      case 'rejected':
+        return 'Rechazada'
+      default:
+        return 'Borrador'
+    }
+  }
+
+  // --- Status Change Handlers ---
+  const handleStatusUpdate = async (newStatus: 'review' | 'approved' | 'rejected') => {
+    setIsSubmitting(true);
+    try {
+      await onStatusChange(id, newStatus);
+      // Optionally add success feedback here (e.g., toast notification)
+    } catch (error) {
+      console.error("Error updating status:", error);
+      // Optionally add error feedback here
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+  // --- End Status Change Handlers ---
 
   return (
-    <div className="mt-8 space-y-8">
-      <Card className="bg-white dark:bg-gray-800">
+    <div className="space-y-6">
+      <div className="flex justify-between items-center gap-4">
+        <h2 className="text-2xl font-bold">Resultados</h2>
+        <div className="flex items-center gap-2">
+          {/* Status Badge */}
+          <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(status)}`}>
+            {getStatusText(status)}
+          </span>
+          
+          {/* Action Buttons based on status */}
+          {status === 'draft' && (
+             <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => handleStatusUpdate('review')}
+              disabled={isSubmitting}
+            >
+              <Send className="mr-2 h-4 w-4" />
+              {isSubmitting ? 'Enviando...' : 'Enviar a Revisión'}
+            </Button>
+          )}
+          {status === 'review' && (
+            <>
+              <Button 
+                variant="destructive" 
+                size="sm" 
+                onClick={() => handleStatusUpdate('rejected')}
+                disabled={isSubmitting}
+              >
+                <XCircle className="mr-2 h-4 w-4" />
+                 {isSubmitting ? 'Rechazando...' : 'Rechazar'}
+              </Button>
+              <Button 
+                variant="default" 
+                size="sm" 
+                className="bg-green-600 hover:bg-green-700"
+                onClick={() => handleStatusUpdate('approved')}
+                disabled={isSubmitting}
+              >
+                <CheckCircle className="mr-2 h-4 w-4" />
+                 {isSubmitting ? 'Aprobando...' : 'Aprobar'}
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {status === 'review' && (
+        <Card className="bg-yellow-50 border-yellow-200">
+          <CardContent className="pt-6">
+            <div className="flex items-center space-x-2 text-yellow-700">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <p>Esta cotización está en revisión. Los valores no afectarán a las métricas generales hasta su aprobación.</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <StatCard 
+          title="Ingresos Totales" 
+          value={results.totalRevenue || 0} 
+          icon={DollarSign} 
+          trend={comparisonResults ? calculateTrend(results.totalRevenue, comparisonResults.totalRevenue) : undefined}
+        />
+        <StatCard 
+          title="Costos Totales" 
+          value={results.totalCosts || 0} 
+          icon={TrendingDown}
+          trend={comparisonResults ? calculateTrend(results.totalCosts, comparisonResults.totalCosts) : undefined} 
+        />
+        <StatCard 
+          title="Margen Bruto" 
+          value={results.grossMargin || 0} 
+          icon={TrendingUp}
+          trend={comparisonResults ? calculateTrend(results.grossMargin, comparisonResults.grossMargin) : undefined}
+        />
+        <StatCard 
+          title="Rentabilidad" 
+          value={results.grossProfitability || 0} 
+          icon={Percent} 
+          suffix="%" 
+          trend={comparisonResults ? results.grossProfitability - comparisonResults.grossProfitability : undefined}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-6">
+        {operationalCostsForCard.length > 0 && (
+            <DetailCard 
+              title="Costos Operativos" 
+              items={operationalCostsForCard}
+              icon={Building} 
+            />
+        )}
+        {ticketInfo.length > 0 && (
+            <DetailCard 
+              title="Información de Plataforma y Tickets"
+              items={ticketInfo} 
+              icon={Activity}
+            />
+        )}
+      </div>
+
+      <Card>
         <CardHeader>
-          <CardTitle className="text-xl font-bold">Análisis Financiero del Evento</CardTitle>
-          <CardDescription>Desglose detallado de ingresos, costos y rentabilidad</CardDescription>
+          <CardTitle>Análisis Gráfico</CardTitle>
+          <CardDescription>Visualización de ingresos, costos y rentabilidad.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="summary" className="space-y-4">
-            <TabsList className="grid grid-cols-4 gap-4 p-1 bg-muted rounded-lg">
-              <TabsTrigger value="summary" className="font-medium">
-                Resumen
-              </TabsTrigger>
-              <TabsTrigger value="revenue" className="font-medium">
-                Ingresos
-              </TabsTrigger>
-              <TabsTrigger value="costs" className="font-medium">
-                Costos
-              </TabsTrigger>
-              <TabsTrigger value="profitability" className="font-medium">
-                Rentabilidad
-              </TabsTrigger>
+          <Tabs defaultValue="costs-pie">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="costs-pie">Costos (Torta)</TabsTrigger>
+              <TabsTrigger value="revenue-pie">Ingresos (Torta)</TabsTrigger>
+              <TabsTrigger value="profit-bar">Rentabilidad (Barras)</TabsTrigger>
             </TabsList>
-
-            <TabsContent value="summary" className="space-y-6">
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <ResultCard
-                  title="Ingresos Totales"
-                  value={results.totalRevenue}
-                  trend={calculateTrend(results.totalRevenue, comparisonResults?.totalRevenue)}
-                  prefix="$"
-                  icon={TrendingUp}
-                />
-                <ResultCard
-                  title="Costos Totales"
-                  value={results.totalCosts}
-                  trend={calculateTrend(results.totalCosts, comparisonResults?.totalCosts)}
-                  prefix="$"
-                  icon={TrendingDown}
-                />
-                <ResultCard
-                  title="Margen Bruto"
-                  value={results.grossMargin}
-                  trend={calculateTrend(results.grossMargin, comparisonResults?.grossMargin)}
-                  prefix="$"
-                  icon={TrendingUp}
-                />
-                <ResultCard
-                  title="Rentabilidad"
-                  value={results.grossProfitability}
-                  trend={calculateTrend(results.grossProfitability, comparisonResults?.grossProfitability)}
-                  suffix="%"
-                  icon={TrendingUp}
-                />
-              </div>
-
-              {/* Solo mostrar la sección de costos operativos si hay algún costo */}
-              {operationalCosts.total > 0 && (
-                <div className="grid grid-cols-1 gap-6">
-                  <DetailCard
-                    title="Costos Operativos"
-                    icon={Building}
-                    items={operationalCostsBreakdown}
-                  />
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Solo mostrar costos de plataforma si hay costos de Palco 4 */}
-                {(results.palco4Cost > 0) && (
-                  <DetailCard
-                    title="Costos de Plataforma"
-                    icon={Activity}
-                    items={[
-                      ...(results.palco4Cost > 0 ? [{ 
-                        label: "Palco 4",
-                        value: results.palco4Cost 
-                      }] : [])
-                    ].filter(item => item.value > 0)}
-                  />
-                )}
-                
-                {/* Solo mostrar información de tickets si hay datos relevantes */}
-                {(results.ticketQuantity > 0 || results.ticketingFee > 0 || results.additionalServices > 0 || results.lineCost > 0) && (
-                  <DetailCard
-                    title="Información de Tickets"
-                    icon={Users}
-                    items={[
-                      ...(results.ticketQuantity > 0 ? [{ label: "Cantidad de Tickets", value: results.ticketQuantity }] : []),
-                      ...(results.ticketingFee > 0 ? [{ label: "Cargo por Servicio", value: results.ticketingFee }] : []),
-                      ...(results.additionalServices > 0 ? [{ label: "Servicios Adicionales", value: results.additionalServices }] : []),
-                      ...(results.lineCost > 0 ? [{ label: "Line", value: results.lineCost }] : [])
-                    ].filter(item => item.value > 0)}
-                  />
-                )}
-              </div>
+            <TabsContent value="costs-pie" className="mt-4">
+              <CustomPieChart data={costsData} title="Desglose de Costos" />
             </TabsContent>
-
-            <TabsContent value="revenue" className="space-y-4">
+            <TabsContent value="revenue-pie" className="mt-4">
               <CustomPieChart data={revenueData} title="Desglose de Ingresos" />
-              <div className="grid grid-cols-3 gap-4">
-                {revenueData.map((item, index) => (
-                  <Card key={index} style={{ borderLeftColor: item.color, borderLeftWidth: '4px' }}>
-                    <CardContent className="pt-4 flex justify-between items-center">
-                      <div>
-                        <p className="text-sm text-muted-foreground">{item.name}</p>
-                        <p className="text-lg font-bold">${(Number(item.value) || 0).toFixed(2)}</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
             </TabsContent>
-            <TabsContent value="costs" className="space-y-4">
-              <CustomBarChart data={costsData} title="Desglose de Costos" />
-              <div className="grid grid-cols-2 gap-4">
-                {costsData.map((item, index) => (
-                  <Card key={index} style={{ borderLeftColor: item.color, borderLeftWidth: '4px' }}>
-                    <CardContent className="pt-4 flex justify-between items-center">
-                      <div>
-                        <p className="text-sm text-muted-foreground">{item.name}</p>
-                        <p className="text-lg font-bold">${(Number(item.value) || 0).toFixed(2)}</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </TabsContent>
-            <TabsContent value="profitability" className="space-y-4">
-              <CustomPieChart data={profitabilityData} title="Análisis de Rentabilidad" />
-              <div className="grid grid-cols-3 gap-4">
-                {profitabilityData.map((item, index) => (
-                  <Card key={index} style={{ borderLeftColor: item.color, borderLeftWidth: '4px' }}>
-                    <CardContent className="pt-4 flex justify-between items-center">
-                      <div>
-                        <p className="text-sm text-muted-foreground">{item.name}</p>
-                        <p className="text-lg font-bold">${(Number(item.value) || 0).toFixed(2)}</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+             <TabsContent value="profit-bar" className="mt-4">
+                <p className="text-center text-muted-foreground p-8">Gráfico de Rentabilidad (Barras) no implementado aún.</p>
             </TabsContent>
           </Tabs>
         </CardContent>
       </Card>
 
-      {/* Render comparison if it exists */}
       {comparisonResults && (
-        <Card className="bg-white dark:bg-gray-800">
-          <CardHeader>
-            <CardTitle className="text-xl font-bold">Análisis Comparativo</CardTitle>
-            <CardDescription>Comparación detallada entre cotizaciones</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {renderComparison()}
-          </CardContent>
-        </Card>
+         <Card>
+           <CardHeader>
+             <CardTitle>Análisis Comparativo</CardTitle>
+             <CardDescription>Comparación con cotización anterior.</CardDescription>
+           </CardHeader>
+           <CardContent>
+             {renderComparison()}
+           </CardContent>
+         </Card>
       )}
     </div>
-  )
-}
-
-function ResultCard({ title, value, trend = 0, prefix = "", suffix = "", description, icon: Icon }: ResultCardProps) {
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium">{title}</CardTitle>
-        <Icon className="h-4 w-4 text-muted-foreground" />
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-1">
-          <p className="text-2xl font-bold">
-            {prefix}{formatNumber(value)}{suffix}
-          </p>
-          {trend !== 0 && (
-            <p className={`text-sm flex items-center ${trend > 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {trend > 0 ? <TrendingUp className="h-4 w-4 mr-1" /> : <TrendingDown className="h-4 w-4 mr-1" />}
-              {formatNumber(Math.abs(trend), { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
-            </p>
-          )}
-          {description && <p className="text-xs text-muted-foreground">{description}</p>}
-        </div>
-      </CardContent>
-    </Card>
-  )
+  );
 }
 

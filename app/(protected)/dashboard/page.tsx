@@ -35,9 +35,11 @@ interface QuotationStats {
   averageProfitability: number
   recentQuotations: Array<{
     id: string
+    name: string
     eventType: string
     createdAt: string
     grossProfitability: number
+    status: string
   }>
 }
 
@@ -131,6 +133,22 @@ export default function DashboardPage() {
     }
   }
 
+  // Helper function to display status with badges
+  const getQuotationStatusBadge = (status: string) => {
+    switch (status) {
+      case 'DRAFT':
+        return <Badge variant="secondary">Borrador</Badge>
+      case 'REVIEW':
+        return <Badge variant="outline">En Revisión</Badge>
+      case 'APPROVED':
+        return <Badge className="bg-blue-500">Aprobada</Badge>
+      case 'REJECTED':
+        return <Badge variant="destructive">Rechazada</Badge>
+      default:
+        return <Badge variant="secondary">{status}</Badge>
+    }
+  }
+
   const renderOverview = () => {
     if (status === "loading" || loading) {
       return (
@@ -193,7 +211,9 @@ export default function DashboardPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Tipo</TableHead>
+                  <TableHead>Nombre</TableHead>
                   <TableHead>Fecha</TableHead>
+                  <TableHead>Estado</TableHead>
                   <TableHead className="text-right">Rentabilidad</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
@@ -202,6 +222,7 @@ export default function DashboardPage() {
                 {stats?.recentQuotations.map((quotation) => (
                   <TableRow key={quotation.id}>
                     <TableCell className="font-medium">{quotation.eventType}</TableCell>
+                    <TableCell>{quotation.name}</TableCell>
                     <TableCell>
                       <div className="flex items-center">
                         <Calendar className="mr-1 h-3 w-3" />
@@ -212,6 +233,7 @@ export default function DashboardPage() {
                         })}
                       </div>
                     </TableCell>
+                    <TableCell>{getQuotationStatusBadge(quotation.status)}</TableCell>
                     <TableCell className="text-right">
                       {getStatusBadge(quotation.grossProfitability)}
                     </TableCell>
