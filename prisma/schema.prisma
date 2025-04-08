@@ -25,7 +25,6 @@ model GlobalParameters {
   id                           Int   @id @default(1)
   defaultPlatformFee           Float
   defaultTicketingFee          Float
-  defaultAdditionalServicesFee Float
   defaultCreditCardFee         Float
   defaultDebitCardFee          Float
   defaultCashFee               Float
@@ -67,6 +66,7 @@ model Quotation {
   user               User                  @relation(fields: [userId], references: [id])
   customCosts        QuotationCustomCost[]
   ticketSectors      TicketSector[]
+  additionalServiceItems QuotationAdditionalService[]
 }
 
 model TicketVariation {
@@ -131,6 +131,15 @@ model EmployeeType {
   updatedAt  DateTime @updatedAt
   createdBy  String
   user       User     @relation(fields: [createdBy], references: [id])
+}
+
+model QuotationAdditionalService {
+  id            String    @id @default(cuid())
+  name          String
+  amount        Float
+  isPercentage  Boolean   @default(false)
+  quotationId   String
+  quotation     Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
 }
 
 enum UserRole {

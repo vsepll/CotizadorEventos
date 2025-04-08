@@ -25,7 +25,7 @@ interface StatCardProps {
 
 interface DetailCardItem {
   label: string;
-  value: number;
+  value: string; // Changed to string to hold pre-formatted value
 }
 
 interface DetailCardProps {
@@ -42,6 +42,28 @@ interface ResultCardProps {
   suffix?: string;
   description?: string;
   icon: LucideIcon;
+}
+
+export interface QuotationResults {
+  ticketQuantity: number;
+  platformFee: number;
+  ticketingFee: number;
+  additionalServices: number;
+  additionalServicesFromPercentage?: number;
+  additionalServicesFromItems?: number;
+  additionalServiceItems?: Array<{
+    id: string;
+    name: string;
+    amount: number;
+    isPercentage: boolean;
+  }>;
+  paywayFees: {
+    credit: number;
+    debit: number;
+    cash: number;
+    total: number;
+  };
+  // ... existing fields ...
 }
 
 const formatNumber = (value: number | null | undefined, options = {}) => {
@@ -227,17 +249,18 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
       </CardHeader>
       <CardContent>
         <div className="space-y-3">
-          {items.filter(item => item.value > 0).map((item, index) => (
+          {items.filter(item => item.value !== "$0,00" && item.value !== "0").map((item, index) => ( // Filter out zero values represented as strings
             <div key={index} className="flex justify-between items-center gap-4">
               <span className="text-sm text-muted-foreground flex-shrink whitespace-nowrap">
                 {item.label}
               </span>
               <span className="text-base font-semibold text-foreground whitespace-nowrap">
-                ${formatNumber(item.value)}
+                {/* Render the pre-formatted string value */} 
+                {item.value}
               </span>
             </div>
           ))}
-          {items.every(item => item.value <= 0) && (
+          {items.every(item => item.value === "$0,00" || item.value === "0") && (
             <p className="text-sm text-muted-foreground text-center py-2">Sin datos</p>
           )}
         </div>
@@ -531,24 +554,54 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
   const getTicketInfo = () => {
     const ticketItems: DetailCardItem[] = [];
     
-    // Assuming these fields exist on the main results object
+    // Format Ticket Quantity as integer string
     if (results.ticketQuantity != null && results.ticketQuantity > 0) {
-      ticketItems.push({ label: "Cantidad de Tickets", value: results.ticketQuantity });
+      ticketItems.push({ 
+        label: "Cantidad de Tickets", 
+        value: results.ticketQuantity.toLocaleString('es-AR') // Format as plain number
+      });
     }
+    // Format others as currency strings
     if (results.ticketingFee != null && results.ticketingFee > 0) {
-      ticketItems.push({ label: "Cargo por Servicio Total", value: results.ticketingFee });
+      ticketItems.push({ label: "Cargo por Servicio Total", value: `$${formatNumber(results.ticketingFee)}` });
     }
     if (results.additionalServices != null && results.additionalServices > 0) {
-      ticketItems.push({ label: "Servicios Adicionales", value: results.additionalServices });
+      if (results.additionalServiceItems && results.additionalServiceItems.length > 0) {
+        results.additionalServiceItems.forEach((service: {
+          id: string;
+          name: string;
+          amount: number;
+          isPercentage: boolean;
+        }) => {
+          // Use results.totalValue (total ticket sales value) as the base for percentage calculation
+          const amount = service.isPercentage 
+            ? (service.amount / 100) * (results.totalValue || 0) // Use totalValue, fallback to 0
+            : service.amount;
+          
+          // Ensure amount is a valid number before formatting
+          const formattedAmount = isNaN(amount) ? "$NaN" : `$${formatNumber(amount)}`;
+
+          ticketItems.push({ 
+            // Modify label for percentage items
+            label: `${service.name} ${service.isPercentage ? `(${service.amount}% s/ Venta Total)` : ''}`,
+            value: formattedAmount
+          });
+        });
+      } else {
+        ticketItems.push({ 
+          label: "Servicios Adicionales", 
+          value: `$${formatNumber(results.additionalServices)}` 
+        });
+      }
     }
     if (results.lineCost != null && results.lineCost > 0) {
-      ticketItems.push({ label: "Costo \"Line\"", value: results.lineCost });
+      ticketItems.push({ label: "Costo \"Line\"", value: `$${formatNumber(results.lineCost)}` });
     }
      if (results.palco4Cost != null && results.palco4Cost > 0) {
-      ticketItems.push({ label: "Costo Palco4", value: results.palco4Cost });
+      ticketItems.push({ label: "Costo Palco4", value: `$${formatNumber(results.palco4Cost)}` });
     }
      if (results.paywayFees?.total != null && results.paywayFees.total > 0) {
-      ticketItems.push({ label: "Comisiones Pago", value: results.paywayFees.total });
+      ticketItems.push({ label: "Comisiones Pago", value: `$${formatNumber(results.paywayFees.total)}` });
     }
 
     return ticketItems;
@@ -562,19 +615,19 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
   const operationalCostsForCard: DetailCardItem[] = useMemo(() => {
     const items: DetailCardItem[] = [];
     if (operationalCostsObject.credentials > 0) {
-      items.push({ label: "Credenciales", value: operationalCostsObject.credentials });
+      items.push({ label: "Credenciales", value: `$${formatNumber(operationalCostsObject.credentials)}` });
     }
      if (operationalCostsObject.ticketing > 0) { // Added ticketing
-      items.push({ label: "Ticketing", value: operationalCostsObject.ticketing });
+      items.push({ label: "Ticketing", value: `$${formatNumber(operationalCostsObject.ticketing)}` });
     }
     if (operationalCostsObject.employees > 0) {
-      items.push({ label: "Personal", value: operationalCostsObject.employees });
+      items.push({ label: "Personal", value: `$${formatNumber(operationalCostsObject.employees)}` });
     }
     if (operationalCostsObject.mobility > 0) {
-      items.push({ label: "Movilidad", value: operationalCostsObject.mobility });
+      items.push({ label: "Movilidad", value: `$${formatNumber(operationalCostsObject.mobility)}` });
     }
      if (operationalCostsObject.customTotal > 0) {
-      items.push({ label: "Costos Op. Personalizados", value: operationalCostsObject.customTotal });
+      items.push({ label: "Costos Op. Personalizados", value: `$${formatNumber(operationalCostsObject.customTotal)}` });
     }
     // Add other operational costs if they are separate properties in the object
     return items;
@@ -712,6 +765,7 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
           title="Rentabilidad" 
           value={results.grossProfitability || 0} 
           icon={Percent} 
+          prefix=""
           suffix="%" 
           trend={comparisonResults ? results.grossProfitability - comparisonResults.grossProfitability : undefined}
         />
@@ -773,4 +827,5 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
     </div>
   );
 }
+
 

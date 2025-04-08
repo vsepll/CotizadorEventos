@@ -27,7 +27,12 @@ const QuotationInputSchema = z.object({
     name: z.enum(["TICKET_PLUS", "PALCO4"]),
     percentage: z.number().min(0).max(100)
   }),
-  additionalServicesPercentage: z.number().min(0).max(100).optional(),
+  additionalServiceItems: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    amount: z.number(),
+    isPercentage: z.boolean()
+  })).optional(),
   paymentMethods: z.object({
     credit: z.object({
       percentage: z.number().min(0).max(100),
@@ -65,7 +70,7 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
     totalAmount = 0,
     ticketPrice = 0,
     platform,
-    additionalServicesPercentage = 0,
+    additionalServiceItems = [],
     paymentMethods,
     employees = [],
     mobilityKilometers = 0,
@@ -136,7 +141,18 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
     console.log('Cargo de servicio total calculado:', ticketingFee);
   }
   
-  const additionalServices = totalValue * (additionalServicesPercentage / 100)
+  // Calculate additional services from items (percentage is now handled within the item itself)
+  const additionalServicesFromItems = additionalServiceItems.reduce((sum, item) => {
+    if (item.isPercentage) {
+      // Ensure totalValue is valid before calculation
+      const baseValue = totalValue > 0 ? totalValue : 0;
+      return sum + (baseValue * (item.amount / 100));
+    }
+    return sum + item.amount;
+  }, 0);
+  
+  // Total additional services now comes solely from the items
+  const additionalServices = additionalServicesFromItems;
 
   // Calculate payment fees
   const creditFee = paymentMethods.credit 
@@ -214,15 +230,15 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
     total: ourPaymentCosts
   }
 
-  // Calculate total revenue (ticketing fee + additional services)
-  const totalRevenue = ticketingFee + additionalServices
+  // Calculate total revenue -> USE totalValue (gross ticket sales)
+  const totalRevenue = totalValue; 
 
   // Calculate total costs (platform fee + line cost + operational costs + our payment costs)
   const totalCosts = platformFee + lineCost + operationalCosts.total + ourPaymentCosts
 
   // Calculate gross margin and profitability
   const grossMargin = totalRevenue - totalCosts
-  const grossProfitability = totalRevenue > 0 ? (grossMargin / totalRevenue) * 100 : 0
+  const grossProfitability = totalValue > 0 ? (grossMargin / totalValue) * 100 : 0
 
   // Log calculations for debugging
   console.log('Calculation details:', {
@@ -244,8 +260,12 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
     grossProfitability
   })
 
+  console.log('Final Calculation Results:', { ticketQuantity, totalValue, platformFee, ticketingFee, additionalServices, paywayFees, lineCost, operationalCosts, totalRevenue, totalCosts, grossMargin, grossProfitability });
+
   return {
     ticketQuantity,
+    ticketPrice,
+    totalValue,
     platformFee,
     ticketingFee,
     additionalServices,
@@ -266,7 +286,8 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
         serviceCharge: variation.serviceCharge,
         serviceChargeType: variation.serviceChargeType
       }))
-    }))
+    })),
+    additionalServiceItems
   }
 }
 
@@ -278,7 +299,6 @@ async function ensureGlobalParameters() {
         id: 1,
         defaultPlatformFee: 5,
         defaultTicketingFee: 3,
-        defaultAdditionalServicesFee: 2,
         defaultCreditCardFee: 3.67,
         defaultDebitCardFee: 0.8,
         defaultCashFee: 0.5,
@@ -290,8 +310,9 @@ async function ensureGlobalParameters() {
         lineCostPercentage: 0.41,
         ticketingCostPerTicket: 5,
         fuelCostPerLiter: 300,
-        kmPerLiter: 10
-      }
+        kmPerLiter: 10,
+        monthlyFixedCosts: 0
+      } as any
     })
   }
   return parameters

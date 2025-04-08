@@ -324,21 +324,6 @@ export default function SettingsPage() {
                           max="100"
                         />
                       </div>
-                      <div>
-                        <Label htmlFor="defaultAdditionalServicesFee">Servicios Adicionales (%)</Label>
-                        <Input
-                          id="defaultAdditionalServicesFee"
-                          type="number"
-                          value={globalParameters.defaultAdditionalServicesFee}
-                          onChange={(e) => setGlobalParameters(prev => ({
-                            ...prev!,
-                            defaultAdditionalServicesFee: Number(e.target.value)
-                          }))}
-                          step="0.01"
-                          min="0"
-                          max="100"
-                        />
-                      </div>
                     </div>
 
                     {/* Medios de Pago */}

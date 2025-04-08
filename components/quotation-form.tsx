@@ -52,6 +52,7 @@ import { es } from "date-fns/locale"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
+import { CustomAdditionalServices, AdditionalService } from "@/components/custom-additional-services"
 
 interface TooltipLabelProps {
   htmlFor: string;
@@ -68,7 +69,7 @@ interface FormData {
     name: "TICKET_PLUS" | "SVT";
     percentage: string;
   };
-  additionalServicesPercentage: string;
+  additionalServiceItems: AdditionalService[];
   paymentMethods: {
     credit: {
       percentage: string;
@@ -173,7 +174,8 @@ export function QuotationForm() {
           tollsCost: parsedData.tollsCost || "",
           ticketSectors: parsedData.ticketSectors || [],
           estimatedPaymentDate: parsedData.estimatedPaymentDate || null,
-          paymentStatus: parsedData.paymentStatus || "PENDING"
+          paymentStatus: parsedData.paymentStatus || "PENDING",
+          additionalServiceItems: parsedData.additionalServiceItems || []
         }
       }
     } catch (error) {
@@ -188,7 +190,7 @@ export function QuotationForm() {
         name: "TICKET_PLUS",
         percentage: ""
       },
-      additionalServicesPercentage: "",
+      additionalServiceItems: [],
       paymentMethods: {
         credit: {
           percentage: "",
@@ -275,7 +277,6 @@ export function QuotationForm() {
               ...prevState.platform,
               percentage: data.defaultPlatformFee.toString()
             },
-            additionalServicesPercentage: data.defaultAdditionalServicesFee.toString(),
             paymentMethods: {
               credit: {
                 percentage: data.defaultCreditCardFee.toString(),
@@ -348,7 +349,7 @@ export function QuotationForm() {
         name: "TICKET_PLUS",
         percentage: ""
       },
-      additionalServicesPercentage: "",
+      additionalServiceItems: [],
       paymentMethods: {
         credit: {
           percentage: "",
@@ -499,6 +500,13 @@ export function QuotationForm() {
     }
   }
 
+  const handleAdditionalServicesDataChange = (services: AdditionalService[]) => {
+    setFormData(prev => ({
+      ...prev,
+      additionalServiceItems: services
+    }));
+  };
+
   // Añadir una función para adaptar los resultados al formato esperado por QuotationResults
   const adaptResults = (apiResults: any) => {
     // Primero, hacemos una copia profunda para evitar modificar el original
@@ -552,17 +560,21 @@ export function QuotationForm() {
 
       const averageTicketPrice = totalTickets > 0 ? totalAmount / totalTickets : 0
 
+      // Desestructurar formData para excluir el campo obsoleto
+      const { additionalServicesPercentage, ...restOfFormData } = formData;
+
       const quotationData = {
-        ...formData,
+        ...restOfFormData, // Usar el resto de los datos
         totalAmount: Number(totalAmount),
         ticketPrice: Number(averageTicketPrice),
         // Asegurarse de que todos los valores numéricos sean números
         platform: {
+          // Acceder a platform directamente desde formData original sigue bien
           ...formData.platform,
           percentage: Number(formData.platform.percentage)
         },
-        additionalServicesPercentage: Number(formData.additionalServicesPercentage),
         paymentMethods: {
+          // Acceder a paymentMethods directamente desde formData original
           credit: {
             ...formData.paymentMethods.credit,
             percentage: Number(formData.paymentMethods.credit.percentage)
@@ -576,6 +588,7 @@ export function QuotationForm() {
             percentage: Number(formData.paymentMethods.cash.percentage)
           }
         },
+        // Los demás campos también se acceden desde formData
         credentialsCost: Number(formData.credentialsCost),
         employees: formData.employees.map(emp => ({
           ...emp,
@@ -588,7 +601,9 @@ export function QuotationForm() {
         customOperationalCosts: formData.customOperationalCosts.map(cost => ({
           ...cost,
           amount: Number(cost.amount)
-        }))
+        })),
+        // Asegurarse que additionalServiceItems viene del formData original
+        additionalServiceItems: formData.additionalServiceItems 
       }
 
       console.log('Sending quotation data for calculation:', quotationData)
@@ -665,7 +680,6 @@ export function QuotationForm() {
           name: formData.platform.name,
           percentage: Number(formData.platform.percentage)
         },
-        additionalServicesPercentage: Number(formData.additionalServicesPercentage) || 0,
         paymentMethods: {
           credit: {
             percentage: Number(formData.paymentMethods.credit.percentage) || 0,
@@ -713,6 +727,7 @@ export function QuotationForm() {
         ticketQuantity: totalTicketsQuantity,
         // Override with the user-provided name
         name: quotationName,
+        additionalServiceItems: formData.additionalServiceItems
       };
 
       console.log('Sending complete quotation data:', formDataForSubmission);
@@ -802,8 +817,7 @@ export function QuotationForm() {
       formData.eventType &&
       hasValidTicketSectors() &&
       formData.platform.name &&
-      isValidNumber(formData.platform.percentage) &&
-      isValidNumber(formData.additionalServicesPercentage)
+      isValidNumber(formData.platform.percentage)
 
     // Validar medios de pago
     const validatePaymentMethod = (method: { percentage: string, chargedTo: string }) => {
@@ -841,7 +855,7 @@ export function QuotationForm() {
       validateOptionalNumber(formData.tollsCost)
 
     // Validar servicios adicionales
-    const additionalServicesValid = validateOptionalNumber(formData.additionalServicesPercentage)
+    const additionalServicesValid = validateOptionalNumber(formData.additionalServiceItems.length.toString())
 
     console.log('Form Data:', formData)
     console.log('Validation Results:', {
@@ -956,20 +970,6 @@ export function QuotationForm() {
                 </div>
                 
                  <Separator />
-                 
-                 <div>
-                    <TooltipLabel htmlFor="additionalServicesPercentage" label="% Servicios Adicionales" tooltip="Porcentaje sobre ingresos para servicios adicionales (opcional)." />
-                    <Input 
-                      id="additionalServicesPercentage" 
-                      name="additionalServicesPercentage"
-                      type="number" 
-                      value={formData.additionalServicesPercentage} 
-                      onChange={handleInputChange} 
-                      placeholder="Ej: 5" 
-                      min="0"
-                      step="0.1"
-                    />
-                  </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -1275,6 +1275,15 @@ export function QuotationForm() {
                     />
                 </CardContent>
               </Card>
+
+              {/* Agregar componente de Servicios Adicionales Personalizados */}
+              <Separator className="my-6" />
+              <CustomAdditionalServices
+                value={formData.additionalServiceItems}
+                onChange={handleAdditionalServicesDataChange}
+                // Podríamos pasar el totalAmount calculado si es necesario para porcentajes
+                // totalAmount={calculatedTotalAmount} 
+              />
             </div>
           </TabsContent>
           
@@ -1379,7 +1388,15 @@ export function QuotationForm() {
                 </CardContent>
               </Card>
             ) : results ? (
-                <QuotationResultsComponent results={results} />
+                <div className="mt-8">
+                  <QuotationResultsComponent 
+                    id={null as any}
+                    results={results} 
+                    onStatusChange={async (id: string, newStatus: "review" | "approved" | "rejected"): Promise<void> => { 
+                      console.log(`Status change requested from results component for ID: ${id} to ${newStatus}`);
+                    }} 
+                  />
+                </div>
             ) : (
               <Card className="flex items-center justify-center h-60 border-dashed">
                   <p className="text-muted-foreground text-center px-4">Completa el formulario y presiona "Calcular" para ver los resultados.</p>
