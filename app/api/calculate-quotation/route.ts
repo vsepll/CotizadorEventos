@@ -299,6 +299,7 @@ async function ensureGlobalParameters() {
         id: 1,
         defaultPlatformFee: 5,
         defaultTicketingFee: 3,
+        defaultAdditionalServicesFee: 0,
         defaultCreditCardFee: 3.67,
         defaultDebitCardFee: 0.8,
         defaultCashFee: 0.5,
