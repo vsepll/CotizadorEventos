@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { PrismaClient } from "@prisma/client"
 import { z } from "zod"
-import redis, { invalidateQuotationCache } from "@/lib/redis"
+import { invalidateQuotationCache } from "@/lib/redis"
 
 const prisma = new PrismaClient()
 

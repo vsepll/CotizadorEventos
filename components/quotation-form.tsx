@@ -70,6 +70,11 @@ interface FormData {
     percentage: string;
   };
   additionalServiceItems: AdditionalService[];
+  paymentMethod: {
+    id: string;
+    name: string;
+    percentage: number;
+  };
   paymentMethods: {
     credit: {
       percentage: string;
@@ -97,6 +102,10 @@ interface FormData {
     id: string;
     name: string;
     amount: number;
+    calculationType: "fixed" | "percentage" | "per_day" | "per_day_per_person" | "per_ticket_system" | "per_ticket_sector";
+    days?: number;
+    persons?: number;
+    sectors?: string[];
   }>;
   ticketSectors: Array<{
     name: string;
@@ -110,6 +119,7 @@ interface FormData {
   }>;
   estimatedPaymentDate: string | null;
   paymentStatus: "PENDING" | "CONFIRMED" | "PAID";
+  additionalServicesPercentage?: string;
 }
 
 interface EmployeeType {
@@ -117,6 +127,13 @@ interface EmployeeType {
   name: string;
   isOperator: boolean;
   costPerDay: number;
+}
+
+// Definir interfaz para métodos de pago
+interface PaymentMethodType {
+  id: string;
+  name: string;
+  percentage: number;
 }
 
 // Re-add formatCurrency helper function
@@ -152,7 +169,13 @@ export function QuotationForm() {
           ...parsedData,
           platform: {
             name: parsedData.platform?.name || "TICKET_PLUS",
-            percentage: parsedData.platform?.percentage || ""
+            percentage: parsedData.platform?.percentage || "0"
+          },
+          // Inicializar el nuevo campo paymentMethod
+          paymentMethod: parsedData.paymentMethod || {
+            id: "",
+            name: "",
+            percentage: 0
           },
           paymentMethods: {
             credit: {
@@ -188,9 +211,14 @@ export function QuotationForm() {
       ticketPrice: "",
       platform: {
         name: "TICKET_PLUS",
-        percentage: ""
+        percentage: "0"
       },
       additionalServiceItems: [],
+      paymentMethod: {
+        id: "",
+        name: "",
+        percentage: 0
+      },
       paymentMethods: {
         credit: {
           percentage: "",
@@ -225,6 +253,10 @@ export function QuotationForm() {
   const [ticketSectors, setTicketSectors] = useState([])
   // Add a state to control the save modal visibility
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false)
+  const [isClearModalOpen, setIsClearModalOpen] = useState(false)
+
+  // Añadir estado para métodos de pago
+  const [paymentMethodTypes, setPaymentMethodTypes] = useState<PaymentMethodType[]>([])
 
   // Guardar la pestaña activa en localStorage cuando cambia
   useEffect(() => {
@@ -256,61 +288,105 @@ export function QuotationForm() {
     }
   }, [formData]);
 
-  // Cargar parámetros globales solo si no hay datos guardados
-  useEffect(() => {
-    const fetchGlobalParameters = async () => {
-      try {
-        const response = await fetch('/api/global-parameters');
-        if (!response.ok) {
-          throw new Error('Failed to fetch global parameters');
-        }
-        const data = await response.json();
-        
-        // Aplicamos valores por defecto solo si formData está en estado "vacío"
-        if (!formData.eventType && !formData.platform.percentage) {
-          console.log('Applying default global parameters:', data);
+    // Cargar parámetros globales solo si no hay datos guardados
+    useEffect(() => {
+      const fetchGlobalParameters = async () => {
+        try {
+          // Utilizamos el endpoint que expone todos los parámetros globales (incluidos los cargados vía Excel)
+          const response = await fetch('/api/admin/parameters');
+          if (!response.ok) {
+            throw new Error('Failed to fetch global parameters');
+          }
+          const data = await response.json();
           
-          // Solo establecemos los parámetros si el formulario está "vacío"
-          setFormData(prevState => ({
-            ...prevState,
-            platform: {
-              ...prevState.platform,
-              percentage: data.defaultPlatformFee.toString()
-            },
-            paymentMethods: {
-              credit: {
-                percentage: data.defaultCreditCardFee.toString(),
-                chargedTo: "CONSUMER"
+          console.log('Fetched global parameters:', data);
+          
+          // Verificar si hay costos operativos personalizados para aplicar
+          const hasCustomCosts = Array.isArray(data.customOperationalCosts) && data.customOperationalCosts.length > 0;
+          const hasAdditionalServices = Array.isArray(data.customAdditionalServices) && data.customAdditionalServices.length > 0;
+          
+          // Siempre aplicar los costos operativos y servicios adicionales si existen
+          if (hasCustomCosts || hasAdditionalServices) {
+            setFormData(prevState => ({
+              ...prevState,
+              // Mezclar costos operativos personalizados globales con los que ya existan (evita duplicados por nombre)
+              customOperationalCosts: (() => {
+                if (!Array.isArray(data.customOperationalCosts)) return prevState.customOperationalCosts;
+
+                // Normalizar nombres para comparación sin acentos / mayúsculas
+                const normalize = (s: string) => s.trim().toLowerCase();
+
+                const existing = prevState.customOperationalCosts;
+                const extras = data.customOperationalCosts
+                  .filter((gc: any) => !existing.some(ec => normalize(ec.name) === normalize(gc.name)))
+                  .map((cost: any, idx: number) => ({
+                    id: `op-auto-${idx}-${cost.name}`,
+                    name: cost.name,
+                    amount: Number(cost.amount) || 0,
+                    calculationType: cost.calculationType || "fixed",
+                    days: cost.defaultDays ?? undefined,
+                    persons: cost.defaultPersons ?? undefined,
+                    sectors: cost.defaultSectors ?? undefined
+                  }));
+                return [...existing, ...extras];
+              })(),
+              // Aplicar servicios adicionales si están vacíos
+              additionalServiceItems: prevState.additionalServiceItems.length === 0 && Array.isArray(data.customAdditionalServices)
+                ? data.customAdditionalServices.map((service: any, idx: number) => ({
+                    id: `srv-${idx}-${service.name}`,
+                    name: service.name,
+                    amount: Number(service.baseAmount) || 0,
+                    isPercentage: Boolean(service.isPercentage)
+                  }))
+                : prevState.additionalServiceItems
+            }));
+          }
+          
+          // Para el resto de parámetros, solo aplicar si el formulario está "vacío"
+          if (!formData.eventType && !formData.platform.percentage) {
+            console.log('Applying default global parameters:', data);
+            
+            // Solo establecemos los parámetros si el formulario está "vacío"
+            setFormData(prevState => ({
+              ...prevState,
+              platform: {
+                ...prevState.platform,
+                percentage: data.defaultPlatformFee.toString()
               },
-              debit: {
-                percentage: data.defaultDebitCardFee.toString(),
-                chargedTo: "CONSUMER"
+              paymentMethods: {
+                credit: {
+                  percentage: data.defaultCreditCardFee.toString(),
+                  chargedTo: "CONSUMER"
+                },
+                debit: {
+                  percentage: data.defaultDebitCardFee.toString(),
+                  chargedTo: "CONSUMER"
+                },
+                cash: {
+                  percentage: data.defaultCashFee.toString(),
+                  chargedTo: "CONSUMER"
+                }
               },
-              cash: {
-                percentage: data.defaultCashFee.toString(),
-                chargedTo: "CONSUMER"
-              }
-            },
-            // Si hay un sector de tickets, actualizamos sus valores por defecto de serviceCharge
-            ticketSectors: prevState.ticketSectors.length > 0 ? 
-              prevState.ticketSectors.map(sector => ({
-                ...sector,
-                variations: sector.variations.map(variation => ({
-                  ...variation,
-                  serviceCharge: variation.serviceCharge || data.defaultTicketingFee,
-                  serviceChargeType: variation.serviceChargeType || "percentage"
-                }))
-              })) : 
-              prevState.ticketSectors
-          }));
+              // Si hay un sector de tickets, actualizamos sus valores por defecto de serviceCharge
+              ticketSectors: prevState.ticketSectors.length > 0 ? 
+                prevState.ticketSectors.map(sector => ({
+                  ...sector,
+                  variations: sector.variations.map(variation => ({
+                    ...variation,
+                    serviceCharge: variation.serviceCharge || data.defaultTicketingFee,
+                    serviceChargeType: variation.serviceChargeType || "percentage"
+                  }))
+                })) : 
+                prevState.ticketSectors
+            }));
+          }
+        } catch (error) {
+          console.error('Error fetching global parameters:', error);
         }
-      } catch (error) {
-        console.error('Error fetching global parameters:', error);
-      }
-    };
-    
-    fetchGlobalParameters()
-  }, [toast])
+      };
+      
+      fetchGlobalParameters()
+    }, [toast])
 
   // Agregar el efecto para cargar los tipos de empleados
   useEffect(() => {
@@ -336,6 +412,88 @@ export function QuotationForm() {
     fetchEmployeeTypes();
   }, [toast]);
 
+  // Agregar el efecto para cargar los tipos de métodos de pago
+  useEffect(() => {
+    const fetchPaymentMethods = async () => {
+      try {
+        const response = await fetch("/api/admin/parameters");
+        if (!response.ok) {
+          throw new Error("Failed to fetch global parameters");
+        }
+        const data = await response.json();
+        
+        // Verificar si existen métodos de pago en los parámetros globales
+        if (data.paymentMethods && Array.isArray(data.paymentMethods)) {
+          console.log("Métodos de pago cargados:", data.paymentMethods);
+          setPaymentMethodTypes(data.paymentMethods);
+        } else {
+          // Si no existen en los parámetros, usar opciones predefinidas
+          const predefinedMethods = [
+            {
+              id: "web-payway-22d",
+              name: "Costo medio de pago web con Payway a 22 días hábiles",
+              percentage: 4.5
+            },
+            {
+              id: "web-mp-22d",
+              name: "Costo medio de pago web con Mercado Pago a 22 días hábiles",
+              percentage: 5.5
+            },
+            {
+              id: "web-macro-22d",
+              name: "Costo medio de pago web con Macro a 22 días hábiles",
+              percentage: 4.2
+            },
+            {
+              id: "web-payway-galicia-72h",
+              name: "Costo medio de pago web con Payway-Galicia a 72 hs",
+              percentage: 5.0
+            },
+            {
+              id: "point-payway-22d",
+              name: "Costo medio de pago point con Payway a 22 días hábiles",
+              percentage: 3.5
+            },
+            {
+              id: "point-mp-22d",
+              name: "Costo medio de pago point con Mercado Pago a 22 días hábiles",
+              percentage: 4.5
+            },
+            {
+              id: "point-macro-22d",
+              name: "Costo medio de pago point con Macro a 22 días hábiles",
+              percentage: 3.2
+            },
+            {
+              id: "point-payway-galicia-72h",
+              name: "Costo medio de pago point con Payway-Galicia a 72 hs",
+              percentage: 4.0
+            }
+          ];
+          setPaymentMethodTypes(predefinedMethods);
+        }
+      } catch (error) {
+        console.error("Error fetching payment methods:", error);
+        // En caso de error, usar métodos predefinidos
+        const predefinedMethods = [
+          {
+            id: "web-payway-22d",
+            name: "Costo medio de pago web con Payway a 22 días hábiles",
+            percentage: 4.5
+          },
+          {
+            id: "web-mp-22d",
+            name: "Costo medio de pago web con Mercado Pago a 22 días hábiles",
+            percentage: 5.5
+          }
+        ];
+        setPaymentMethodTypes(predefinedMethods);
+      }
+    };
+
+    fetchPaymentMethods();
+  }, []);
+
   // Función mejorada para limpiar datos
   const clearFormData = () => {
     localStorage.removeItem('quotationFormData');
@@ -347,9 +505,14 @@ export function QuotationForm() {
       ticketPrice: "",
       platform: {
         name: "TICKET_PLUS",
-        percentage: ""
+        percentage: "0"
       },
       additionalServiceItems: [],
+      paymentMethod: {
+        id: "",
+        name: "",
+        percentage: 0
+      },
       paymentMethods: {
         credit: {
           percentage: "",
@@ -375,6 +538,7 @@ export function QuotationForm() {
       paymentStatus: "PENDING"
     });
     setResults(null);
+    setIsClearModalOpen(false);
   }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -433,11 +597,14 @@ export function QuotationForm() {
   }
 
   const handlePlatformChange = (value: "TICKET_PLUS" | "SVT") => {
+    // Establecer un porcentaje predeterminado según la plataforma seleccionada
+    const defaultPercentage = value === "TICKET_PLUS" ? "5" : "0";
+    
     setFormData((prev) => ({
       ...prev,
       platform: {
-        ...prev.platform,
-        name: value
+        name: value,
+        percentage: defaultPercentage
       }
     }))
   }
@@ -474,7 +641,7 @@ export function QuotationForm() {
     });
   }
 
-  const handleCustomOperationalCostsDataChange = (costs: Array<{ id: string, name: string, amount: number }>) => {
+  const handleCustomOperationalCostsDataChange = (costs: Array<{ id: string, name: string, amount: number, calculationType: "fixed" | "percentage" | "per_day" | "per_day_per_person" | "per_ticket_system" | "per_ticket_sector", days?: number, persons?: number, sectors?: string[] }>) => {
     setFormData(prev => ({
       ...prev,
       customOperationalCosts: costs
@@ -544,6 +711,9 @@ export function QuotationForm() {
     setIsLoading(true)
 
     try {
+      // Create a backup of current form data before any modifications
+      const formDataBackup = { ...formData };
+      
       // Calcular el totalAmount basado en los sectores de tickets
       const totalAmount = formData.ticketSectors.reduce((total, sector) => {
         return total + sector.variations.reduce((sectorTotal, variation) => {
@@ -563,6 +733,22 @@ export function QuotationForm() {
       // Desestructurar formData para excluir el campo obsoleto
       const { additionalServicesPercentage, ...restOfFormData } = formData;
 
+      // Asegurarse de que los métodos de pago estén configurados correctamente
+      const paymentMethodsData = {
+        credit: {
+          percentage: formData.paymentMethod.percentage || 0,
+          chargedTo: "US" as const // Los costos siempre los absorbemos nosotros
+        },
+        debit: {
+          percentage: 0,
+          chargedTo: "CONSUMER" as const
+        },
+        cash: {
+          percentage: 0,
+          chargedTo: "CONSUMER" as const
+        }
+      };
+
       const quotationData = {
         ...restOfFormData, // Usar el resto de los datos
         totalAmount: Number(totalAmount),
@@ -573,21 +759,7 @@ export function QuotationForm() {
           ...formData.platform,
           percentage: Number(formData.platform.percentage)
         },
-        paymentMethods: {
-          // Acceder a paymentMethods directamente desde formData original
-          credit: {
-            ...formData.paymentMethods.credit,
-            percentage: Number(formData.paymentMethods.credit.percentage)
-          },
-          debit: {
-            ...formData.paymentMethods.debit,
-            percentage: Number(formData.paymentMethods.debit.percentage)
-          },
-          cash: {
-            ...formData.paymentMethods.cash,
-            percentage: Number(formData.paymentMethods.cash.percentage)
-          }
-        },
+        paymentMethods: paymentMethodsData,
         // Los demás campos también se acceden desde formData
         credentialsCost: Number(formData.credentialsCost),
         employees: formData.employees.map(emp => ({
@@ -619,6 +791,8 @@ export function QuotationForm() {
 
       if (!response.ok) {
         const errorData = await response.json()
+        // Restore original form data if there's an error
+        setFormData(formDataBackup);
         throw new Error(errorData.error || "Error calculando cotización")
       }
 
@@ -632,11 +806,13 @@ export function QuotationForm() {
         description: "Cotización calculada correctamente",
       })
       
-      // Actualizar formData con los valores calculados
+      // Actualizar formData con los valores calculados, pero preservar empleados
       setFormData(prev => ({
         ...prev,
         totalAmount: String(totalAmount),
         ticketPrice: String(averageTicketPrice),
+        // Preservar datos de empleados
+        employees: prev.employees
       }))
     } catch (error) {
       console.error("Error calculating quotation:", error)
@@ -680,18 +856,25 @@ export function QuotationForm() {
           name: formData.platform.name,
           percentage: Number(formData.platform.percentage)
         },
+        // Usar el nuevo método de pago
+        paymentMethod: {
+          id: formData.paymentMethod.id,
+          name: formData.paymentMethod.name,
+          percentage: formData.paymentMethod.percentage
+        },
+        // Mantener compatibilidad con API
         paymentMethods: {
           credit: {
-            percentage: Number(formData.paymentMethods.credit.percentage) || 0,
-            chargedTo: formData.paymentMethods.credit.chargedTo || "CONSUMER"
+            percentage: formData.paymentMethod.percentage || 0,
+            chargedTo: "US"
           },
           debit: {
-            percentage: Number(formData.paymentMethods.debit.percentage) || 0,
-            chargedTo: formData.paymentMethods.debit.chargedTo || "CONSUMER"
+            percentage: 0,
+            chargedTo: "CONSUMER"
           },
           cash: {
-            percentage: Number(formData.paymentMethods.cash.percentage) || 0,
-            chargedTo: formData.paymentMethods.cash.chargedTo || "CONSUMER"
+            percentage: 0,
+            chargedTo: "CONSUMER"
           }
         },
         credentialsCost: Number(formData.credentialsCost) || 0,
@@ -706,7 +889,9 @@ export function QuotationForm() {
         customOperationalCosts: formData.customOperationalCosts.map(cost => ({
           id: cost.id,
           name: cost.name,
-          amount: Number(cost.amount)
+          amount: Number(cost.amount),
+          calculationType: cost.calculationType,
+          sectors: cost.sectors
         })),
         ticketSectors: formData.ticketSectors.map(sector => ({
           name: sector.name,
@@ -951,22 +1136,6 @@ export function QuotationForm() {
                         </SelectContent>
                       </Select>
                     </div>
-                    
-                    {formData.platform.name === "TICKET_PLUS" && (
-                      <div>
-                        <TooltipLabel htmlFor="platformPercentage" label="% Comisión Plataforma" tooltip="Porcentaje de comisión que cobra Ticket Plus." required />
-                        <Input 
-                          id="platformPercentage" 
-                          type="number" 
-                          value={formData.platform.percentage} 
-                          onChange={(e) => setFormData(prev => ({ ...prev, platform: { ...prev.platform, percentage: e.target.value } }))} 
-                          placeholder="Ej: 10" 
-                          min="0"
-                          step="0.1"
-                          required 
-                        />
-                      </div>
-                    )}
                 </div>
                 
                  <Separator />
@@ -1000,103 +1169,51 @@ export function QuotationForm() {
                   <CardDescription>Configura las comisiones para cada método de pago y quién las absorbe.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    {/* Credit Card */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end border-b pb-4">
-                      <Label className="sm:col-span-2 font-medium">Tarjeta de Crédito</Label>
+                    {/* Payment Method */}
+                    <div className="grid grid-cols-1 gap-4 items-end">
+                      <Label className="font-medium">Método de Pago</Label>
                       <div>
-                        <TooltipLabel htmlFor="creditPercentage" label="% Comisión" tooltip="Porcentaje de comisión para pagos con tarjeta de crédito." required />
-                        <Input 
-                          id="creditPercentage" 
-                          type="number" 
-                          value={formData.paymentMethods.credit.percentage} 
-                          onChange={(e) => setFormData(prev => ({ ...prev, paymentMethods: { ...prev.paymentMethods, credit: { ...prev.paymentMethods.credit, percentage: e.target.value } } }))}
-                          placeholder="Ej: 4.5" 
-                          min="0" 
-                          step="0.1"
-                          required
-                        />
-                      </div>
-                       <div>
-                        <TooltipLabel htmlFor="creditChargedTo" label="Cobrado a" tooltip="Quién absorbe el costo de la comisión." />
+                        <TooltipLabel htmlFor="paymentMethod" label="Seleccionar" tooltip="Selecciona el método de pago y su comisión asociada" required />
                         <Select 
-                          value={formData.paymentMethods.credit.chargedTo} 
-                          onValueChange={(value: "US" | "CLIENT" | "CONSUMER") => handlePaymentMethodChargeToChange("credit", value)}
+                          value={formData.paymentMethod.id} 
+                          onValueChange={(value: string) => {
+                            const selectedMethod = paymentMethodTypes.find(method => method.id === value);
+                            if (selectedMethod) {
+                              setFormData(prev => ({
+                                ...prev,
+                                paymentMethod: {
+                                  id: value,
+                                  name: selectedMethod.name,
+                                  percentage: selectedMethod.percentage
+                                },
+                                // Mantener compatibilidad con la API actual
+                                paymentMethods: {
+                                  ...prev.paymentMethods,
+                                  credit: {
+                                    percentage: selectedMethod.percentage.toString(),
+                                    chargedTo: "US"
+                                  }
+                                }
+                              }));
+                            }
+                          }}
                         >
-                          <SelectTrigger id="creditChargedTo">
-                            <SelectValue placeholder="Seleccionar" />
+                          <SelectTrigger id="paymentMethod">
+                            <SelectValue placeholder="Seleccionar Método" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="US">Nosotros</SelectItem>
-                            <SelectItem value="CLIENT">Cliente (Productor)</SelectItem>
-                            <SelectItem value="CONSUMER">Consumidor Final</SelectItem>
+                            {paymentMethodTypes.map((method) => (
+                              <SelectItem key={method.id} value={method.id}>
+                                {method.name} ({method.percentage}%)
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
-                      </div>
-                    </div>
-                    {/* Debit Card */}
-                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end border-b pb-4">
-                      <Label className="sm:col-span-2 font-medium">Tarjeta de Débito</Label>
-                      <div>
-                        <TooltipLabel htmlFor="debitPercentage" label="% Comisión" tooltip="Porcentaje de comisión para pagos con tarjeta de débito." required />
-                        <Input 
-                          id="debitPercentage" 
-                          type="number" 
-                          value={formData.paymentMethods.debit.percentage} 
-                          onChange={(e) => setFormData(prev => ({ ...prev, paymentMethods: { ...prev.paymentMethods, debit: { ...prev.paymentMethods.debit, percentage: e.target.value } } }))}
-                          placeholder="Ej: 2.5" 
-                          min="0" 
-                          step="0.1"
-                          required
-                        />
-                      </div>
-                       <div>
-                        <TooltipLabel htmlFor="debitChargedTo" label="Cobrado a" tooltip="Quién absorbe el costo de la comisión." />
-                        <Select 
-                          value={formData.paymentMethods.debit.chargedTo} 
-                          onValueChange={(value: "US" | "CLIENT" | "CONSUMER") => handlePaymentMethodChargeToChange("debit", value)}
-                        >
-                          <SelectTrigger id="debitChargedTo">
-                            <SelectValue placeholder="Seleccionar" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="US">Nosotros</SelectItem>
-                            <SelectItem value="CLIENT">Cliente (Productor)</SelectItem>
-                            <SelectItem value="CONSUMER">Consumidor Final</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    {/* Cash */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
-                      <Label className="sm:col-span-2 font-medium">Efectivo</Label>
-                      <div>
-                        <TooltipLabel htmlFor="cashPercentage" label="% Comisión" tooltip="Porcentaje de comisión para pagos en efectivo (si aplica)." required />
-                        <Input 
-                          id="cashPercentage" 
-                          type="number" 
-                          value={formData.paymentMethods.cash.percentage} 
-                          onChange={(e) => setFormData(prev => ({ ...prev, paymentMethods: { ...prev.paymentMethods, cash: { ...prev.paymentMethods.cash, percentage: e.target.value } } }))}
-                          placeholder="Ej: 1" 
-                          min="0" 
-                          step="0.1"
-                          required
-                        />
-                      </div>
-                       <div>
-                        <TooltipLabel htmlFor="cashChargedTo" label="Cobrado a" tooltip="Quién absorbe el costo de la comisión." />
-                        <Select 
-                          value={formData.paymentMethods.cash.chargedTo} 
-                          onValueChange={(value: "US" | "CLIENT" | "CONSUMER") => handlePaymentMethodChargeToChange("cash", value)}
-                        >
-                          <SelectTrigger id="cashChargedTo">
-                            <SelectValue placeholder="Seleccionar" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="US">Nosotros</SelectItem>
-                            <SelectItem value="CLIENT">Cliente (Productor)</SelectItem>
-                            <SelectItem value="CONSUMER">Consumidor Final</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        {formData.paymentMethod.id && (
+                          <p className="text-sm text-muted-foreground mt-2">
+                            Comisión: {formData.paymentMethod.percentage}%
+                          </p>
+                        )}
                       </div>
                     </div>
                 </CardContent>
@@ -1269,10 +1386,31 @@ export function QuotationForm() {
                   <CardDescription>Añade cualquier otro costo operativo específico del evento.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <CustomOperationalCosts 
-                      value={formData.customOperationalCosts} 
-                      onChange={handleCustomOperationalCostsDataChange} 
-                    />
+                  {/* Calculamos los valores totales a partir de los sectores de tickets */}
+                  {(() => {
+                    // Calcular el valor total y la cantidad total de tickets
+                    let calculatedTotalValue = 0;
+                    let calculatedTotalQuantity = 0;
+                    
+                    if (formData.ticketSectors && formData.ticketSectors.length > 0) {
+                      formData.ticketSectors.forEach(sector => {
+                        sector.variations.forEach(variation => {
+                          calculatedTotalValue += variation.price * variation.quantity;
+                          calculatedTotalQuantity += variation.quantity;
+                        });
+                      });
+                    }
+                    
+                    return (
+                      <CustomOperationalCosts 
+                        value={formData.customOperationalCosts} 
+                        onChange={handleCustomOperationalCostsDataChange} 
+                        ticketSectors={formData.ticketSectors}
+                        totalAmount={calculatedTotalValue}
+                        ticketQuantity={calculatedTotalQuantity}
+                      />
+                    );
+                  })()}
                 </CardContent>
               </Card>
 
@@ -1326,7 +1464,30 @@ export function QuotationForm() {
         
         {/* Action Buttons - Moved outside Tabs but within the form section div */}
         <div className="mt-8 flex flex-col sm:flex-row justify-between items-center gap-4">
-          <Button variant="outline" onClick={clearFormData}>Limpiar Formulario</Button>
+          <Dialog open={isClearModalOpen} onOpenChange={setIsClearModalOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">Limpiar Formulario</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Confirmar limpieza del formulario</DialogTitle>
+                <DialogDescription>
+                  ¿Estás seguro de que deseas limpiar todos los datos del formulario? Esta acción no se puede deshacer y perderás todos los datos ingresados, incluidos los empleados y costos personalizados.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="outline">Cancelar</Button>
+                </DialogClose>
+                <Button 
+                  variant="destructive" 
+                  onClick={clearFormData}
+                >
+                  Sí, limpiar todo
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <div className="flex gap-4">
             <Button onClick={handleSubmit} disabled={isLoading || isSaving} className="min-w-[120px]">
               {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Calculator className="mr-2 h-4 w-4" />} 

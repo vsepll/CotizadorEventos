@@ -58,7 +58,10 @@ const QuotationSchema = z.object({
   customOperationalCosts: z.array(z.object({
     id: z.string(),
     name: z.string(),
-    amount: z.number()
+    amount: z.number(),
+    calculationType: z.enum(["fixed", "percentage", "per_day", "per_day_per_person", "per_ticket_system", "per_ticket_sector"]).optional().default("fixed"),
+    sectors: z.array(z.string()).optional(),
+    days: z.number().optional()
   })).optional(),
   ticketSectors: z.array(TicketSectorSchema),
   estimatedPaymentDate: z.string().nullable().optional(),
@@ -97,7 +100,10 @@ const QuotationInputSchema = z.object({
   customOperationalCosts: z.array(z.object({
     id: z.string(),
     name: z.string(),
-    amount: z.number()
+    amount: z.number(),
+    calculationType: z.enum(["fixed", "percentage", "per_day", "per_day_per_person", "per_ticket_system", "per_ticket_sector"]).optional().default("fixed"),
+    sectors: z.array(z.string()).optional(),
+    days: z.number().optional()
   })).optional(),
   ticketSectors: z.array(TicketSectorSchema),
   estimatedPaymentDate: z.string().nullable().optional(),
@@ -140,7 +146,10 @@ const createQuotationSchema = z.object({
   customOperationalCosts: z.array(z.object({
     id: z.string(),
     name: z.string(),
-    amount: z.number()
+    amount: z.number(),
+    calculationType: z.enum(["fixed", "percentage", "per_day", "per_day_per_person", "per_ticket_system", "per_ticket_sector"]).optional().default("fixed"),
+    sectors: z.array(z.string()).optional(),
+    days: z.number().optional()
   })).optional(),
   ticketSectors: z.array(TicketSectorSchema),
   estimatedPaymentDate: z.string().nullable().optional(),
