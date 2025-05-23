@@ -290,8 +290,8 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
     total: ourPaymentCosts
   }
 
-  // Calculate total revenue -> USE ticketingFee (service charge)
-  const totalRevenue = ticketingFee;
+  // Calculate total revenue -> incluir servicios adicionales como ingreso
+  const totalRevenue = ticketingFee + additionalServices;
 
   // Calculate total costs (platform fee + line cost + operational costs + our payment costs)
   const totalCosts = platformFee + lineCost + operationalCosts.total + ourPaymentCosts

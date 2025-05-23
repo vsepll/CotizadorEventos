@@ -46,7 +46,47 @@ export async function POST(request: Request) {
       return {
         name: String(name),
         amount: Number(amount ?? 0),
-        calculationType: calculationType ? String(calculationType).toLowerCase() : "fixed",
+        calculationType: ((): string => {
+          // Normalizar el valor recibido
+          const val = (calculationType ?? "").toString().toLowerCase();
+
+          // Reglas explícitas por valor de celda
+          if (["fixed", "fijo", "$ fijo"].includes(val)) return "fixed";
+          if (["percentage", "%", "% sobre venta", "porcentaje"].includes(val)) return "percentage";
+          if (["per_day", "$/día", "$/dia", "por día", "dia"].includes(val)) return "per_day";
+          if ([
+            "per_day_per_person",
+            "$/día x persona",
+            "$/dia x persona",
+            "dia x persona",
+            "día x persona",
+            "dia por persona",
+            "día por persona"
+          ].includes(val)) return "per_day_per_person";
+          if ([
+            "per_ticket_system",
+            "$/ticket (sistema)",
+            "$/ticket sistema",
+            "ticket sistema",
+            "ticket x sistema",
+            "ticket por sistema",
+            "tickets sistema",
+            "tickets x sistema"
+          ].includes(val)) return "per_ticket_system";
+          if (["per_ticket_sector", "$/ticket x sector", "$/ticket sector"].includes(val)) return "per_ticket_sector";
+
+          // Heurísticas basadas en el nombre cuando el tipo no es explícito o no coincide
+          const normalizedName = String(name).toLowerCase();
+          if (/alquiler.*celular/.test(normalizedName) || /vi[aá]ticos/.test(normalizedName) || /hoteler[íi]a/.test(normalizedName)) {
+            return "per_day_per_person";
+          }
+          if (/facturante/.test(normalizedName) || (/costo de sistema/.test(normalizedName) && /deporte/.test(normalizedName))) {
+            return "per_ticket_system";
+          }
+
+          // Por defecto asumimos costo fijo
+          return "fixed";
+        })(),
       }
     }).filter(Boolean)
 

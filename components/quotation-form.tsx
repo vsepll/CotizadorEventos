@@ -322,8 +322,46 @@ export function QuotationForm() {
                   .map((cost: any, idx: number) => ({
                     id: `op-auto-${idx}-${cost.name}`,
                     name: cost.name,
-                    amount: Number(cost.amount) || 0,
-                    calculationType: cost.calculationType || "fixed",
+                    amount: 0,
+                    calculationType: ((): any => {
+                      // Si calculationType es inválido o ausente, deducir heurísticamente
+                      const ct = (cost.calculationType || "").toString().toLowerCase();
+
+                      if (["fixed", "$ fijo", "fijo"].includes(ct)) return "fixed";
+                      if (["percentage", "%", "% sobre venta", "porcentaje"].includes(ct)) return "percentage";
+                      if (["per_day", "$/día", "$/dia", "por día", "dia"].includes(ct)) return "per_day";
+                      if ([
+                        "per_day_per_person",
+                        "$/día x persona",
+                        "$/dia x persona",
+                        "dia x persona",
+                        "día x persona",
+                        "dia por persona",
+                        "día por persona"
+                      ].includes(ct)) return "per_day_per_person";
+                      if ([
+                        "per_ticket_system",
+                        "$/ticket (sistema)",
+                        "$/ticket sistema",
+                        "ticket sistema",
+                        "ticket x sistema",
+                        "ticket por sistema",
+                        "tickets sistema",
+                        "tickets x sistema"
+                      ].includes(ct)) return "per_ticket_system";
+                      if (["per_ticket_sector", "$/ticket x sector", "$/ticket sector"].includes(ct)) return "per_ticket_sector";
+
+                      // Heurísticas basadas en el nombre
+                      const normalizedName = String(cost.name).toLowerCase();
+                      if (/alquiler.*celular/.test(normalizedName) || /vi[aá]ticos/.test(normalizedName) || /hoteler[íi]a/.test(normalizedName)) {
+                        return "per_day_per_person";
+                      }
+                      if (/facturante/.test(normalizedName) || (/costo de sistema/.test(normalizedName) && /deporte/.test(normalizedName))) {
+                        return "per_ticket_system";
+                      }
+
+                      return "fixed";
+                    })(),
                     days: cost.defaultDays ?? undefined,
                     persons: cost.defaultPersons ?? undefined,
                     sectors: cost.defaultSectors ?? undefined
@@ -335,7 +373,7 @@ export function QuotationForm() {
                 ? data.customAdditionalServices.map((service: any, idx: number) => ({
                     id: `srv-${idx}-${service.name}`,
                     name: service.name,
-                    amount: Number(service.baseAmount) || 0,
+                    amount: 0,
                     isPercentage: Boolean(service.isPercentage)
                   }))
                 : prevState.additionalServiceItems
@@ -432,42 +470,42 @@ export function QuotationForm() {
             {
               id: "web-payway-22d",
               name: "Costo medio de pago web con Payway a 22 días hábiles",
-              percentage: 4.5
+              percentage: 5
             },
             {
               id: "web-mp-22d",
               name: "Costo medio de pago web con Mercado Pago a 22 días hábiles",
-              percentage: 5.5
+              percentage: 6
             },
             {
               id: "web-macro-22d",
               name: "Costo medio de pago web con Macro a 22 días hábiles",
-              percentage: 4.2
+              percentage: 5
             },
             {
               id: "web-payway-galicia-72h",
               name: "Costo medio de pago web con Payway-Galicia a 72 hs",
-              percentage: 5.0
+              percentage: 9
             },
             {
               id: "point-payway-22d",
               name: "Costo medio de pago point con Payway a 22 días hábiles",
-              percentage: 3.5
+              percentage: 0
             },
             {
               id: "point-mp-22d",
               name: "Costo medio de pago point con Mercado Pago a 22 días hábiles",
-              percentage: 4.5
+              percentage: 6
             },
             {
               id: "point-macro-22d",
               name: "Costo medio de pago point con Macro a 22 días hábiles",
-              percentage: 3.2
+              percentage: 0
             },
             {
               id: "point-payway-galicia-72h",
               name: "Costo medio de pago point con Payway-Galicia a 72 hs",
-              percentage: 4.0
+              percentage: 0
             }
           ];
           setPaymentMethodTypes(predefinedMethods);
@@ -479,12 +517,12 @@ export function QuotationForm() {
           {
             id: "web-payway-22d",
             name: "Costo medio de pago web con Payway a 22 días hábiles",
-            percentage: 4.5
+            percentage: 5
           },
           {
             id: "web-mp-22d",
             name: "Costo medio de pago web con Mercado Pago a 22 días hábiles",
-            percentage: 5.5
+            percentage: 6
           }
         ];
         setPaymentMethodTypes(predefinedMethods);

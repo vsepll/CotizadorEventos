@@ -603,9 +603,6 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
      if (results.palco4Cost != null && results.palco4Cost > 0) {
       ticketItems.push({ label: "Costo Palco4", value: `$${formatNumber(results.palco4Cost)}` });
     }
-     if (results.paywayFees?.total != null && results.paywayFees.total > 0) {
-      ticketItems.push({ label: "Comisiones Pago", value: `$${formatNumber(results.paywayFees.total)}` });
-    }
 
     return ticketItems;
   }
@@ -653,9 +650,13 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
      if (operationalCostsObject.customTotal > 0) {
       items.push({ label: "Costos Op. Personalizados", value: `$${formatNumber(operationalCostsObject.customTotal)}` });
     }
+    // Comisiones de Pago
+    if (results.paywayFees?.total != null && results.paywayFees.total > 0) {
+      items.push({ label: "Comisiones Pago", value: `$${formatNumber(results.paywayFees.total)}` });
+    }
     // Add other operational costs if they are separate properties in the object
     return items;
-  }, [operationalCostsObject]);
+  }, [operationalCostsObject, results]);
   // --- End transform --- 
   
   // --- Get Custom Operational Costs Breakdown ---  
