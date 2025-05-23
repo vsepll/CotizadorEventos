@@ -8,38 +8,6 @@ const redis = new Redis({
   port: Number(process.env.REDIS_PORT || 6379),
 });
 
-// Función para cachear commissions y fixed expenses
-export async function cacheGlobalSettings() {
-  const commissions = await prisma.globalCommission.findMany({
-    where: { isDefault: true }
-  });
-  
-  const fixedExpenses = await prisma.globalFixedExpense.findMany({
-    where: { isDefault: true }
-  });
-
-  // Cachear por 24 horas
-  await redis.set('default_commissions', JSON.stringify(commissions), 'EX', 86400);
-  await redis.set('default_fixed_expenses', JSON.stringify(fixedExpenses), 'EX', 86400);
-}
-
-// Función para obtener settings cacheados
-export async function getCachedGlobalSettings() {
-  const cachedCommissions = await redis.get('default_commissions');
-  const cachedFixedExpenses = await redis.get('default_fixed_expenses');
-
-  if (cachedCommissions && cachedFixedExpenses) {
-    return {
-      commissions: JSON.parse(cachedCommissions),
-      fixedExpenses: JSON.parse(cachedFixedExpenses)
-    };
-  }
-
-  // Si no hay caché, buscar y cachear
-  await cacheGlobalSettings();
-  return getCachedGlobalSettings();
-}
-
 // Función para invalidar el caché de cotizaciones
 export async function invalidateQuotationCache() {
   try {
@@ -69,6 +37,32 @@ export async function invalidateQuotationCache() {
 export async function getGlobalParametersVersion() {
   const version = await redis.get('global_parameters_version');
   return version ? parseInt(version) : null;
+}
+
+// Función que reemplaza la anterior cacheGlobalSettings
+export async function cacheGlobalSettings() {
+  // Esta función ya no guarda nada en Redis
+  // Solo actualiza la versión para invalidar caches antiguos
+  const timestamp = Date.now();
+  await redis.set('global_parameters_version', timestamp);
+  return { success: true };
+}
+
+// Función que reemplaza la anterior getCachedGlobalSettings
+export async function getCachedGlobalSettings() {
+  // Ahora siempre obtiene datos frescos de la base de datos
+  const commissions = await prisma.globalCommission.findMany({
+    where: { isDefault: true }
+  });
+  
+  const fixedExpenses = await prisma.globalFixedExpense.findMany({
+    where: { isDefault: true }
+  });
+  
+  return {
+    commissions,
+    fixedExpenses
+  };
 }
 
 export default redis;

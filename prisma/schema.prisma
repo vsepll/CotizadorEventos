@@ -25,6 +25,7 @@ model GlobalParameters {
   id                           Int   @id @default(1)
   defaultPlatformFee           Float
   defaultTicketingFee          Float
+  defaultAdditionalServicesFee Float @default(0)
   defaultCreditCardFee         Float
   defaultDebitCardFee          Float
   defaultCashFee               Float
@@ -38,6 +39,19 @@ model GlobalParameters {
   fuelCostPerLiter             Float @default(0)
   kmPerLiter                   Float @default(10)
   monthlyFixedCosts            Float @default(0)
+  /**
+   * Definiciones globales de costos operativos personalizados cargadas desde un Excel.
+   * Se almacena un array JSON con objetos del tipo:
+   * { name: String, baseAmount: Float, calculationType: String }
+   */
+  customOperationalCosts      Json?
+
+  /**
+   * Definiciones globales de servicios adicionales personalizados cargadas desde un Excel.
+   * Se almacena un array JSON con objetos del tipo:
+   * { name: String, baseAmount: Float, isPercentage: Boolean }
+   */
+  customAdditionalServices    Json?
 }
 
 model Quotation {

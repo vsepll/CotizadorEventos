@@ -534,7 +534,10 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
     const custom = Array.isArray(opCosts.custom) 
         ? opCosts.custom 
         : (Array.isArray(opCosts.customCosts) ? opCosts.customCosts : []);
-    const customTotal = custom.reduce((sum: number, cost: any) => sum + (Number(cost?.amount) || 0), 0);
+    const customTotal = custom.reduce((sum: number, cost: any) => {
+      const value = cost?.calculatedAmount != null ? Number(cost.calculatedAmount) : Number(cost?.amount) || 0;
+      return sum + value;
+    }, 0);
 
     return {
       credentials: typeof opCosts.credentials === 'number' ? opCosts.credentials : 0,
@@ -544,12 +547,12 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
       // Include ticketing cost if available
       ticketing: typeof opCosts.ticketing === 'number' ? opCosts.ticketing : 0, 
       customTotal: customTotal,
-       // Keep original custom array if needed elsewhere, but customTotal is likely enough for DetailCard
-      // custom: custom, 
+      // Preserve the original custom costs array for detailed breakdown
+      custom: custom,
       total: opCosts.total || 0 // Use total if available, otherwise sum might be needed
     };
   };
-
+  
   // --- Define getTicketInfo function --- 
   const getTicketInfo = () => {
     const ticketItems: DetailCardItem[] = [];
@@ -600,17 +603,35 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
      if (results.palco4Cost != null && results.palco4Cost > 0) {
       ticketItems.push({ label: "Costo Palco4", value: `$${formatNumber(results.palco4Cost)}` });
     }
-     if (results.paywayFees?.total != null && results.paywayFees.total > 0) {
-      ticketItems.push({ label: "Comisiones Pago", value: `$${formatNumber(results.paywayFees.total)}` });
-    }
 
     return ticketItems;
   }
   // --- End define getTicketInfo --- 
 
-  const operationalCostsObject = useMemo(() => getOperationalCosts(), [results]);
-  const ticketInfo = useMemo(() => getTicketInfo(), [results]);
+  // Get operational costs including custom costs  
+  const operationalCostsObject = useMemo(() => {
+    const opCosts = results.operationalCosts || {};
+    const custom = Array.isArray(opCosts.custom) 
+        ? opCosts.custom 
+        : (Array.isArray(opCosts.customCosts) ? opCosts.customCosts : []);
+    const customTotal = custom.reduce((sum: number, cost: any) => {
+      const value = cost?.calculatedAmount != null ? Number(cost.calculatedAmount) : Number(cost?.amount) || 0;
+      return sum + value;
+    }, 0);
 
+    return {
+      credentials: typeof opCosts.credentials === 'number' ? opCosts.credentials : 0,
+      employees: typeof opCosts.employees === 'number' ? opCosts.employees : 0,
+      mobility: typeof opCosts.mobility === 'number' ? opCosts.mobility : 0,
+      ticketing: typeof opCosts.ticketing === 'number' ? opCosts.ticketing : 0, 
+      customTotal: customTotal,
+      custom: custom,
+      total: opCosts.total || 0
+    };
+  }, [results]);
+    
+  const ticketInfo = useMemo(() => getTicketInfo(), [results]);
+  
   // --- Transform operationalCosts for DetailCard --- 
   const operationalCostsForCard: DetailCardItem[] = useMemo(() => {
     const items: DetailCardItem[] = [];
@@ -629,10 +650,66 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
      if (operationalCostsObject.customTotal > 0) {
       items.push({ label: "Costos Op. Personalizados", value: `$${formatNumber(operationalCostsObject.customTotal)}` });
     }
+    // Comisiones de Pago
+    if (results.paywayFees?.total != null && results.paywayFees.total > 0) {
+      items.push({ label: "Comisiones Pago", value: `$${formatNumber(results.paywayFees.total)}` });
+    }
     // Add other operational costs if they are separate properties in the object
     return items;
-  }, [operationalCostsObject]);
+  }, [operationalCostsObject, results]);
   // --- End transform --- 
+  
+  // --- Get Custom Operational Costs Breakdown ---  
+  const customOperationalCostsForCard: DetailCardItem[] = useMemo(() => {
+    const items: DetailCardItem[] = [];
+    // Use the custom costs from operationalCostsObject
+    const customCosts = operationalCostsObject.custom || [];
+        
+    if (Array.isArray(customCosts) && customCosts.length > 0) {
+      customCosts.forEach(cost => {
+        // Use calculatedAmount if available, otherwise fall back to amount
+        const amount = cost?.calculatedAmount != null 
+          ? Number(cost.calculatedAmount) 
+          : Number(cost?.amount) || 0;
+                  
+        if (amount > 0) {
+          // Format cost description based on calculation type if available
+          let label = cost.name;
+          if (cost.calculationType) {
+            switch (cost.calculationType) {
+              case "percentage":
+                label = `${cost.name} (${cost.amount}%)`;
+                break;
+              case "per_day":
+                label = `${cost.name} (${cost.days || 1} días)`;
+                break;
+              case "per_day_per_person":
+                label = `${cost.name} (${cost.days || 1} días × ${cost.persons || 1} pers.)`;
+                break;
+              case "per_ticket_system":
+                label = `${cost.name} (por ticket)`;
+                break;
+              case "per_ticket_sector":
+                const sectorCount = cost.sectors?.length || 0;
+                label = `${cost.name} (${sectorCount} sector${sectorCount !== 1 ? 'es' : ''})`;
+                break;
+              default:
+                // Fixed amount or unknown type
+                break;
+            }
+          }
+                    
+          items.push({ 
+            label: label,
+            value: `$${formatNumber(amount)}` 
+          });
+        }
+      });
+    }
+        
+    return items;
+  }, [operationalCostsObject.custom]);
+  // --- End Custom Operational Costs Breakdown ---
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -689,18 +766,7 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
             {getStatusText(status)}
           </span>
           
-          {/* Action Buttons based on status */}
-          {status === 'draft' && (
-             <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => handleStatusUpdate('review')}
-              disabled={isSubmitting}
-            >
-              <Send className="mr-2 h-4 w-4" />
-              {isSubmitting ? 'Enviando...' : 'Enviar a Revisión'}
-            </Button>
-          )}
+          {/* Action Buttons based on status - Eliminado el botón "Enviar a Revisión" */}
           {status === 'review' && (
             <>
               <Button 
@@ -773,18 +839,25 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
 
       <div className="grid grid-cols-1 gap-6">
         {operationalCostsForCard.length > 0 && (
-            <DetailCard 
-              title="Costos Operativos" 
-              items={operationalCostsForCard}
-              icon={Building} 
-            />
+          <DetailCard 
+            title="Costos Operativos" 
+            items={operationalCostsForCard} 
+            icon={Building}
+          />
+        )}
+        {operationalCostsObject.custom && operationalCostsObject.custom.length > 0 && (
+          <DetailCard 
+            title="Desglose de Costos Operativos Personalizados" 
+            items={customOperationalCostsForCard} 
+            icon={DollarSign}
+          />
         )}
         {ticketInfo.length > 0 && (
-            <DetailCard 
-              title="Información de Plataforma y Tickets"
-              items={ticketInfo} 
-              icon={Activity}
-            />
+          <DetailCard 
+            title="Información de Plataforma y Tickets" 
+            items={ticketInfo} 
+            icon={Activity}
+          />
         )}
       </div>
 

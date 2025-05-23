@@ -71,6 +71,10 @@ export default function SettingsPage() {
     costPerDay: 0
   })
 
+  // Estado para la carga de Excel de costos operativos / servicios adicionales
+  const [excelFile, setExcelFile] = useState<File | null>(null)
+  const [isUploadingExcel, setIsUploadingExcel] = useState(false)
+
   // Proteger la ruta
   useEffect(() => {
     if (status === "loading") return;
@@ -261,6 +265,47 @@ export default function SettingsPage() {
     }
   }
 
+  const handleExcelUpload = async () => {
+    if (!excelFile) {
+      toast({
+        title: "Archivo no seleccionado",
+        description: "Por favor seleccione un archivo Excel (.xlsx) antes de continuar.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsUploadingExcel(true)
+    try {
+      const formData = new FormData()
+      formData.append("file", excelFile)
+
+      const response = await fetch("/api/admin/operational-costs/upload", {
+        method: "POST",
+        body: formData,
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) throw new Error(data.error || "Error al subir el archivo")
+
+      toast({
+        title: "Éxito",
+        description: "Archivo cargado y parámetros actualizados correctamente.",
+      })
+    } catch (error) {
+      console.error(error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "No se pudo procesar el archivo.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsUploadingExcel(false)
+      setExcelFile(null)
+    }
+  }
+
   if (status === "loading" || !session) {
     return <div>Loading...</div>
   }
@@ -289,299 +334,203 @@ export default function SettingsPage() {
 
             <TabsContent value="global">
               {globalParameters && (
-                <form onSubmit={handleGlobalParametersSubmit} className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {/* Comisiones */}
-                    <div className="space-y-4">
-                      <h3 className="font-medium">Comisiones por Defecto</h3>
-                      <div>
-                        <Label htmlFor="defaultPlatformFee">Comisión de Plataforma (%)</Label>
-                        <Input
-                          id="defaultPlatformFee"
-                          type="number"
-                          value={globalParameters.defaultPlatformFee}
-                          onChange={(e) => setGlobalParameters(prev => ({
-                            ...prev!,
-                            defaultPlatformFee: Number(e.target.value)
-                          }))}
-                          step="0.01"
-                          min="0"
-                          max="100"
-                        />
+                <>
+                  <form onSubmit={handleGlobalParametersSubmit} className="space-y-6">
+                    <div className="space-y-6">
+                      {/* Movilidad */}
+                      <div className="space-y-4">
+                        <h3 className="font-medium">Movilidad</h3>
+                        <div>
+                          <Label htmlFor="fuelCostPerLiter">Costo de Combustible por Litro</Label>
+                          <Input
+                            id="fuelCostPerLiter"
+                            type="number"
+                            value={globalParameters.fuelCostPerLiter}
+                            onChange={(e) => setGlobalParameters(prev => ({
+                              ...prev!,
+                              fuelCostPerLiter: Number(e.target.value)
+                            }))}
+                            min="0"
+                            step="0.01"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="kmPerLiter">Kilómetros por Litro</Label>
+                          <Input
+                            id="kmPerLiter"
+                            type="number"
+                            value={globalParameters.kmPerLiter}
+                            onChange={(e) => setGlobalParameters(prev => ({
+                              ...prev!,
+                              kmPerLiter: Number(e.target.value)
+                            }))}
+                            min="1"
+                            step="0.1"
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <Label htmlFor="defaultTicketingFee">Cargo por Servicio (%)</Label>
-                        <Input
-                          id="defaultTicketingFee"
-                          type="number"
-                          value={globalParameters.defaultTicketingFee}
-                          onChange={(e) => setGlobalParameters(prev => ({
-                            ...prev!,
-                            defaultTicketingFee: Number(e.target.value)
-                          }))}
-                          step="0.01"
-                          min="0"
-                          max="100"
-                        />
+
+                      {/* Métodos de Pago */}
+                      <div className="space-y-4">
+                        <h3 className="font-medium">Comisiones de Métodos de Pago (%)</h3>
+                        <div>
+                          <Label htmlFor="defaultCreditCardFee">Tarjeta de Crédito</Label>
+                          <Input
+                            id="defaultCreditCardFee"
+                            type="number"
+                            value={globalParameters.defaultCreditCardFee}
+                            onChange={(e) => setGlobalParameters(prev => ({
+                              ...prev!,
+                              defaultCreditCardFee: Number(e.target.value)
+                            }))}
+                            min="0"
+                            max="100"
+                            step="0.01"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="defaultDebitCardFee">Tarjeta de Débito</Label>
+                          <Input
+                            id="defaultDebitCardFee"
+                            type="number"
+                            value={globalParameters.defaultDebitCardFee}
+                            onChange={(e) => setGlobalParameters(prev => ({
+                              ...prev!,
+                              defaultDebitCardFee: Number(e.target.value)
+                            }))}
+                            min="0"
+                            max="100"
+                            step="0.01"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="defaultCashFee">Efectivo</Label>
+                          <Input
+                            id="defaultCashFee"
+                            type="number"
+                            value={globalParameters.defaultCashFee}
+                            onChange={(e) => setGlobalParameters(prev => ({
+                              ...prev!,
+                              defaultCashFee: Number(e.target.value)
+                            }))}
+                            min="0"
+                            max="100"
+                            step="0.01"
+                          />
+                        </div>
                       </div>
                     </div>
 
-                    {/* Medios de Pago */}
-                    <div className="space-y-4">
-                      <h3 className="font-medium">Medios de Pago</h3>
-                      <div>
-                        <Label htmlFor="defaultCreditCardFee">Tarjeta de Crédito (%)</Label>
-                        <Input
-                          id="defaultCreditCardFee"
-                          type="number"
-                          value={globalParameters.defaultCreditCardFee}
-                          onChange={(e) => setGlobalParameters(prev => ({
-                            ...prev!,
-                            defaultCreditCardFee: Number(e.target.value)
-                          }))}
-                          step="0.01"
-                          min="0"
-                          max="100"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="defaultDebitCardFee">Tarjeta de Débito (%)</Label>
-                        <Input
-                          id="defaultDebitCardFee"
-                          type="number"
-                          value={globalParameters.defaultDebitCardFee}
-                          onChange={(e) => setGlobalParameters(prev => ({
-                            ...prev!,
-                            defaultDebitCardFee: Number(e.target.value)
-                          }))}
-                          step="0.01"
-                          min="0"
-                          max="100"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="defaultCashFee">Efectivo (%)</Label>
-                        <Input
-                          id="defaultCashFee"
-                          type="number"
-                          value={globalParameters.defaultCashFee}
-                          onChange={(e) => setGlobalParameters(prev => ({
-                            ...prev!,
-                            defaultCashFee: Number(e.target.value)
-                          }))}
-                          step="0.01"
-                          min="0"
-                          max="100"
-                        />
-                      </div>
+                    <div className="space-y-6 mt-8">
+                      <Card>
+                        <CardHeader>
+                          <CardTitle>Costos Fijos Mensuales</CardTitle>
+                          <CardDescription>
+                            Configura los costos fijos mensuales para el cálculo de rentabilidad global
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="flex flex-col space-y-4">
+                            <div>
+                              <Label htmlFor="monthlyFixedCosts">Costos Fijos Mensuales</Label>
+                              <div className="flex items-center space-x-2">
+                                <Input
+                                  id="monthlyFixedCosts"
+                                  type="number"
+                                  value={globalParameters?.monthlyFixedCosts || 0}
+                                  onChange={(e) => {
+                                    // Actualizar el estado local
+                                    setGlobalParameters(prev => ({
+                                      ...prev!,
+                                      monthlyFixedCosts: Number(e.target.value)
+                                    }))
+                                  }}
+                                  min="0"
+                                  step="1000"
+                                />
+                                <Button 
+                                  onClick={async () => {
+                                    try {
+                                      // Actualizar solo los costos fijos mensuales mediante un endpoint separado
+                                      const response = await fetch("/api/global-monthly-costs", {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ 
+                                          value: globalParameters?.monthlyFixedCosts || 0 
+                                        }),
+                                      })
+
+                                      if (!response.ok) throw new Error("Failed to update monthly fixed costs")
+
+                                      // Mostrar mensaje de éxito
+                                      toast({
+                                        title: "Éxito",
+                                        description: "Costos fijos mensuales actualizados correctamente"
+                                      })
+
+                                      // Guardar en localStorage para persistencia local
+                                      localStorage.setItem('monthlyFixedCosts', String(globalParameters?.monthlyFixedCosts || 0))
+                                    } catch (error) {
+                                      console.error("Error:", error)
+                                      toast({
+                                        title: "Error",
+                                        description: "No se pudieron actualizar los costos fijos mensuales",
+                                        variant: "destructive",
+                                      })
+                                    }
+                                  }}
+                                >
+                                  Guardar
+                                </Button>
+                              </div>
+                              <p className="text-sm text-muted-foreground mt-2">
+                                Este valor se utiliza para el cálculo de rentabilidad global de la empresa
+                              </p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
                     </div>
 
-                    {/* Costos Operativos */}
-                    <div className="space-y-4">
-                      <h3 className="font-medium">Costos Operativos</h3>
-                      <div>
-                        <Label htmlFor="defaultCredentialsCost">Credenciales</Label>
-                        <Input
-                          id="defaultCredentialsCost"
-                          type="number"
-                          value={globalParameters.defaultCredentialsCost}
-                          onChange={(e) => setGlobalParameters(prev => ({
-                            ...prev!,
-                            defaultCredentialsCost: Number(e.target.value)
-                          }))}
-                          min="0"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="defaultSupervisorsCost">Supervisores</Label>
-                        <Input
-                          id="defaultSupervisorsCost"
-                          type="number"
-                          value={globalParameters.defaultSupervisorsCost}
-                          onChange={(e) => setGlobalParameters(prev => ({
-                            ...prev!,
-                            defaultSupervisorsCost: Number(e.target.value)
-                          }))}
-                          min="0"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="defaultOperatorsCost">Operadores</Label>
-                        <Input
-                          id="defaultOperatorsCost"
-                          type="number"
-                          value={globalParameters.defaultOperatorsCost}
-                          onChange={(e) => setGlobalParameters(prev => ({
-                            ...prev!,
-                            defaultOperatorsCost: Number(e.target.value)
-                          }))}
-                          min="0"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Movilidad */}
-                    <div className="space-y-4">
-                      <h3 className="font-medium">Movilidad</h3>
-                      <div>
-                        <Label htmlFor="fuelCostPerLiter">Costo de Combustible por Litro</Label>
-                        <Input
-                          id="fuelCostPerLiter"
-                          type="number"
-                          value={globalParameters.fuelCostPerLiter}
-                          onChange={(e) => setGlobalParameters(prev => ({
-                            ...prev!,
-                            fuelCostPerLiter: Number(e.target.value)
-                          }))}
-                          min="0"
-                          step="0.01"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="kmPerLiter">Kilómetros por Litro</Label>
-                        <Input
-                          id="kmPerLiter"
-                          type="number"
-                          value={globalParameters.kmPerLiter}
-                          onChange={(e) => setGlobalParameters(prev => ({
-                            ...prev!,
-                            kmPerLiter: Number(e.target.value)
-                          }))}
-                          min="1"
-                          step="0.1"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Otros Costos */}
-                    <div className="space-y-4">
-                      <h3 className="font-medium">Otros Costos</h3>
-                      <div>
-                        <Label htmlFor="palco4FeePerTicket">Costo por Ticket Palco 4</Label>
-                        <Input
-                          id="palco4FeePerTicket"
-                          type="number"
-                          value={globalParameters.palco4FeePerTicket}
-                          onChange={(e) => setGlobalParameters(prev => ({
-                            ...prev!,
-                            palco4FeePerTicket: Number(e.target.value)
-                          }))}
-                          min="0"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="lineCostPercentage">Costo de Línea (%)</Label>
-                        <Input
-                          id="lineCostPercentage"
-                          type="number"
-                          value={globalParameters.lineCostPercentage}
-                          onChange={(e) => setGlobalParameters(prev => ({
-                            ...prev!,
-                            lineCostPercentage: Number(e.target.value)
-                          }))}
-                          step="0.01"
-                          min="0"
-                          max="100"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="ticketingCostPerTicket">Costo de Ticketing por Ticket</Label>
-                        <Input
-                          id="ticketingCostPerTicket"
-                          type="number"
-                          value={globalParameters.ticketingCostPerTicket}
-                          onChange={(e) => setGlobalParameters(prev => ({
-                            ...prev!,
-                            ticketingCostPerTicket: Number(e.target.value)
-                          }))}
-                          min="0"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-6 mt-8">
-                    <Card>
+                    {/* Carga de Excel para definir costos operativos y servicios adicionales */}
+                    <Card className="mt-8">
                       <CardHeader>
-                        <CardTitle>Costos Fijos Mensuales</CardTitle>
+                        <CardTitle>Cargar costos operativos / servicios adicionales desde Excel</CardTitle>
                         <CardDescription>
-                          Configura los costos fijos mensuales para el cálculo de rentabilidad global
+                          El archivo debe contener dos hojas: <strong>OperationalCosts</strong> y <strong>AdditionalServices</strong> con las columnas indicadas en la documentación.
                         </CardDescription>
                       </CardHeader>
-                      <CardContent>
-                        <div className="flex flex-col space-y-4">
-                          <div>
-                            <Label htmlFor="monthlyFixedCosts">Costos Fijos Mensuales</Label>
-                            <div className="flex items-center space-x-2">
-                              <Input
-                                id="monthlyFixedCosts"
-                                type="number"
-                                value={globalParameters?.monthlyFixedCosts || 0}
-                                onChange={(e) => {
-                                  // Actualizar el estado local
-                                  setGlobalParameters(prev => ({
-                                    ...prev!,
-                                    monthlyFixedCosts: Number(e.target.value)
-                                  }))
-                                }}
-                                min="0"
-                                step="1000"
-                              />
-                              <Button 
-                                onClick={async () => {
-                                  try {
-                                    // Actualizar solo los costos fijos mensuales mediante un endpoint separado
-                                    const response = await fetch("/api/global-monthly-costs", {
-                                      method: "POST",
-                                      headers: { "Content-Type": "application/json" },
-                                      body: JSON.stringify({ 
-                                        value: globalParameters?.monthlyFixedCosts || 0 
-                                      }),
-                                    })
-
-                                    if (!response.ok) throw new Error("Failed to update monthly fixed costs")
-
-                                    // Mostrar mensaje de éxito
-                                    toast({
-                                      title: "Éxito",
-                                      description: "Costos fijos mensuales actualizados correctamente"
-                                    })
-
-                                    // Guardar en localStorage para persistencia local
-                                    localStorage.setItem('monthlyFixedCosts', String(globalParameters?.monthlyFixedCosts || 0))
-                                  } catch (error) {
-                                    console.error("Error:", error)
-                                    toast({
-                                      title: "Error",
-                                      description: "No se pudieron actualizar los costos fijos mensuales",
-                                      variant: "destructive",
-                                    })
-                                  }
-                                }}
-                              >
-                                Guardar
-                              </Button>
-                            </div>
-                            <p className="text-sm text-muted-foreground mt-2">
-                              Este valor se utiliza para el cálculo de rentabilidad global de la empresa
-                            </p>
-                          </div>
-                        </div>
+                      <CardContent className="flex flex-col gap-4">
+                        <Input
+                          type="file"
+                          accept=".xlsx, .xls"
+                          onChange={(e) => setExcelFile(e.target.files?.[0] || null)}
+                        />
+                        <Button type="button" onClick={handleExcelUpload} disabled={isUploadingExcel}>
+                          {isUploadingExcel ? (
+                            <>
+                              <span className="animate-spin mr-2">⏳</span>Cargando...
+                            </>
+                          ) : (
+                            "Subir y Procesar"
+                          )}
+                        </Button>
                       </CardContent>
                     </Card>
-                  </div>
 
-                  <Button type="submit" disabled={isSaving}>
-                    {isSaving ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Guardando...
-                      </>
-                    ) : (
-                      "Guardar Cambios"
-                    )}
-                  </Button>
-                </form>
+                    {/* Botón para guardar todos los parámetros globales */}
+                    <Button type="submit" disabled={isSaving} className="w-full md:w-auto">
+                      {isSaving ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Guardando...
+                        </>
+                      ) : (
+                        "Guardar Cambios"
+                      )}
+                    </Button>
+                  </form>
+                </>
               )}
             </TabsContent>
 

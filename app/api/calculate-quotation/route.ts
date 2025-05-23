@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import redis, { getGlobalParametersVersion } from "@/lib/redis"
 
 // Define schema for ticket variation
 const TicketVariationSchema = z.object({
@@ -50,7 +49,7 @@ const QuotationInputSchema = z.object({
   employees: z.array(z.object({
     employeeTypeId: z.string(),
     quantity: z.number().int().positive(),
-    days: z.number().int().positive()
+    days: z.number().int().nonnegative().optional()
   })).optional().default([]),
   mobilityKilometers: z.number().nonnegative().optional(),
   numberOfTolls: z.number().int().nonnegative().optional(),
@@ -58,7 +57,11 @@ const QuotationInputSchema = z.object({
   customOperationalCosts: z.array(z.object({
     id: z.string(),
     name: z.string(),
-    amount: z.number().nonnegative()
+    amount: z.number().nonnegative(),
+    calculationType: z.enum(["fixed", "percentage", "per_day", "per_day_per_person", "per_ticket_system", "per_ticket_sector"]).optional().default("fixed"),
+    days: z.number().int().nonnegative().optional(),
+    persons: z.number().int().nonnegative().optional(),
+    sectors: z.array(z.string()).optional()
   })).optional().default([]),
   ticketSectors: z.array(TicketSectorSchema).optional().default([])
 })
@@ -102,6 +105,14 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
     ticketQuantity = calculatedTotalQuantity;
   }
   
+  // Determine event days. If employees array is provided we will use the maximum number of days among them as a proxy.
+  // Defaults to 1 if not definable.
+  const eventDays = employees.length > 0
+    ? employees.reduce((max, e) => Math.max(max, e.days ?? 0), 0)
+    : 0;
+
+  // Nota: Si se necesita el total de personas (audiencia) para algún cálculo futuro, usar ticketQuantity directamente.
+
   // Validar que tenemos valores válidos para continuar
   if (totalValue <= 0 || ticketQuantity <= 0) {
     throw new Error("No se ha definido una cantidad válida de tickets o precios. Por favor, revise los sectores de tickets.");
@@ -191,7 +202,7 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
     employeeCosts = employees.reduce((total, employee) => {
       const employeeType = employeeTypes.find(et => et.id === employee.employeeTypeId)
       if (employeeType) {
-        return total + (employeeType.costPerDay * employee.quantity * employee.days)
+        return total + (employeeType.costPerDay * employee.quantity * (employee.days ?? 0))
       }
       return total
     }, 0)
@@ -201,8 +212,57 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
   const mobilityFuelCost = mobilityKilometers * (globalParameters.fuelCostPerLiter / globalParameters.kmPerLiter)
   const totalMobilityCost = mobilityFuelCost + (numberOfTolls * tollsCost)
 
-  // Calculate custom operational costs total
-  const customOperationalCostsTotal = customOperationalCosts.reduce((sum, cost) => sum + Number(cost.amount), 0)
+  // Helper to compute the monetary value of a custom operational cost according to its calculationType
+  const computeCustomCostValue = (cost: any): number => {
+    // Validamos que amount sea un número válido mayor a 0
+    const amount = Number(cost.amount);
+    if (isNaN(amount) || amount <= 0) return 0;
+
+    switch (cost.calculationType) {
+      case "percentage":
+        return totalValue * (amount / 100);
+      case "per_day":
+        if (typeof cost.days !== "number" || cost.days <= 0) return 0;
+        return cost.days * amount;
+      case "per_day_per_person": {
+        if (typeof cost.days !== "number" || cost.days <= 0 || 
+            typeof cost.persons !== "number" || cost.persons <= 0) return 0;
+        return cost.days * cost.persons * amount;
+      }
+      case "per_ticket_system":
+        // Asegurarnos que hay tickets en el sistema
+        if (ticketQuantity <= 0) return 0;
+        return ticketQuantity * amount;
+      case "per_ticket_sector": {
+        if (!cost.sectors || cost.sectors.length === 0 || ticketSectors.length === 0) return 0;
+        // Sum tickets for the selected sectors only
+        let ticketsInSelectedSectors = 0;
+        ticketSectors.forEach(sector => {
+          if (cost.sectors!.includes(sector.name)) {
+            sector.variations.forEach(variation => {
+              ticketsInSelectedSectors += variation.quantity;
+            });
+          }
+        });
+        // Verificar que hay tickets en los sectores seleccionados
+        if (ticketsInSelectedSectors <= 0) return 0;
+        return ticketsInSelectedSectors * amount;
+      }
+      case "fixed":
+      default:
+        return amount; // Ya validamos que amount es un número válido
+    }
+  };
+
+  // Calculate totals with the new helper
+  const customOperationalCostsTotal = customOperationalCosts.reduce((sum, cost) => {
+    return sum + computeCustomCostValue(cost);
+  }, 0);
+
+  const computedCustomOperationalCosts = customOperationalCosts.map(cost => ({
+    ...cost,
+    calculatedAmount: computeCustomCostValue(cost)
+  }));
 
   // Calculate operational costs
   const operationalCosts = {
@@ -210,7 +270,7 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
     ticketing: platform.name === "PALCO4" ? 0 : ticketQuantity * globalParameters.ticketingCostPerTicket,
     employees: employeeCosts,
     mobility: totalMobilityCost,
-    custom: customOperationalCosts,
+    custom: computedCustomOperationalCosts,
     total: 0
   }
 
@@ -230,15 +290,16 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
     total: ourPaymentCosts
   }
 
-  // Calculate total revenue -> USE totalValue (gross ticket sales)
-  const totalRevenue = totalValue; 
+  // Calculate total revenue -> incluir servicios adicionales como ingreso
+  const totalRevenue = ticketingFee + additionalServices;
 
   // Calculate total costs (platform fee + line cost + operational costs + our payment costs)
   const totalCosts = platformFee + lineCost + operationalCosts.total + ourPaymentCosts
 
   // Calculate gross margin and profitability
   const grossMargin = totalRevenue - totalCosts
-  const grossProfitability = totalValue > 0 ? (grossMargin / totalValue) * 100 : 0
+  // Cálculo de la rentabilidad basado en el costo total
+  const grossProfitability = totalCosts > 0 ? (grossMargin / totalCosts) * 100 : 0
 
   // Log calculations for debugging
   console.log('Calculation details:', {
@@ -299,6 +360,7 @@ async function ensureGlobalParameters() {
         id: 1,
         defaultPlatformFee: 5,
         defaultTicketingFee: 3,
+        defaultAdditionalServicesFee: 0,
         defaultCreditCardFee: 3.67,
         defaultDebitCardFee: 0.8,
         defaultCashFee: 0.5,
@@ -326,21 +388,7 @@ export async function POST(request: Request) {
     const validatedInput = QuotationInputSchema.parse(body)
     console.log('Validated input:', validatedInput)
 
-    // Obtener la versión actual de los parámetros globales
-    const currentParametersVersion = await getGlobalParametersVersion();
-
-    // Generate a cache key based on the input and parameters version
-    const cacheKey = `quotation:${JSON.stringify(validatedInput)}:pv:${currentParametersVersion || 'default'}`;
-    console.log('Cache key:', cacheKey);
-
-    // Try to get the result from cache
-    const cachedResult = await redis.get(cacheKey)
-    if (cachedResult) {
-      console.log('Using cached result');
-      return NextResponse.json(JSON.parse(cachedResult))
-    }
-
-    // Si no está en caché o la versión de los parámetros ha cambiado, recalcular
+    // Ya no usamos caché para los resultados
     console.log('Calculating new result');
     const globalParameters = await ensureGlobalParameters()
     if (!globalParameters) {
@@ -350,8 +398,7 @@ export async function POST(request: Request) {
     const results = await calculateQuotation(validatedInput, globalParameters)
     console.log('Calculation results:', results)
 
-    // Store the result in cache with an expiration of 1 hour
-    await redis.set(cacheKey, JSON.stringify(results), "EX", 3600)
+    // Ya no guardamos resultados en caché
 
     return NextResponse.json(results)
   } catch (error) {
@@ -364,4 +411,3 @@ export async function POST(request: Request) {
     }, { status: 500 })
   }
 }
-
