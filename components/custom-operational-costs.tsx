@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { useSession } from "next-auth/react"
 
 interface CustomCost {
   id: string
@@ -48,6 +49,10 @@ interface CustomOperationalCostsProps {
 export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, ticketQuantity = 0, ticketSectors }: CustomOperationalCostsProps) {
   const [newCostName, setNewCostName] = useState("")
   const [formError, setFormError] = useState("")
+  const { data: session } = useSession()
+
+  // Verificar si el usuario es administrador
+  const isAdmin = session?.user?.role === "ADMIN"
 
   const rowInputClass = "h-8 px-2 text-sm";
 
@@ -146,6 +151,9 @@ export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, 
   }
 
   const calculateCostAmount = (cost: CustomCost): number => {
+    // Solo calcular para admins o cuando sea necesario internamente
+    if (!isAdmin) return 0;
+    
     // Validamos que amount sea un número válido mayor a 0
     if (isNaN(cost.amount) || cost.amount <= 0) return 0;
     
@@ -198,7 +206,7 @@ export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, 
     }
   }
 
-  const totalCosts = value.reduce((sum, cost) => sum + calculateCostAmount(cost), 0);
+  const totalCosts = isAdmin ? value.reduce((sum, cost) => sum + calculateCostAmount(cost), 0) : 0;
 
   return (
     <Card className="w-full">
@@ -206,9 +214,15 @@ export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, 
         <CardTitle className="flex items-center gap-2">
           <DollarSign className="h-5 w-5 text-primary" />
           Costos Operativos Personalizados
+          {!isAdmin && (
+            <Badge variant="secondary" className="ml-2">Solo Configuración</Badge>
+          )}
         </CardTitle>
         <CardDescription>
-          Agregue costos operativos adicionales específicos para este evento
+          {isAdmin 
+            ? "Agregue costos operativos adicionales específicos para este evento"
+            : "Configure los conceptos y cantidades de costos operativos (los montos son gestionados por administradores)"
+          }
         </CardDescription>
       </CardHeader>
       <CardContent className="pt-6">
@@ -244,10 +258,10 @@ export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, 
           {value.length > 0 ? (
             <div className="space-y-3 mt-4">
               {/* Encabezados - solo visibles en desktop */}
-              <div className="hidden md:grid grid-cols-[minmax(240px,1.8fr)_110px_100px_60px_60px_minmax(140px,1fr)_32px] gap-1 px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase border rounded-md bg-muted/30">
+              <div className={`hidden md:grid ${isAdmin ? 'grid-cols-[minmax(240px,1.8fr)_110px_100px_60px_60px_minmax(140px,1fr)_32px]' : 'grid-cols-[minmax(240px,2fr)_130px_80px_80px_minmax(140px,1.5fr)_32px]'} gap-1 px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase border rounded-md bg-muted/30`}>
                 <span>CONCEPTO</span>
                 <span>TIPO</span>
-                <span>MONTO</span>
+                {isAdmin && <span>MONTO</span>}
                 <span>DÍAS</span>
                 <span>PERS.</span>
                 <span>SECTORES</span>
@@ -260,7 +274,7 @@ export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, 
                   {value.map((cost) => (
                     <div
                       key={cost.id}
-                      className="grid grid-cols-1 md:grid-cols-[minmax(240px,1.8fr)_110px_100px_60px_60px_minmax(140px,1fr)_32px] gap-1 md:gap-1 items-center p-2 border rounded-lg hover:bg-muted/10 transition-colors text-sm"
+                      className={`grid grid-cols-1 ${isAdmin ? 'md:grid-cols-[minmax(240px,1.8fr)_110px_100px_60px_60px_minmax(140px,1fr)_32px]' : 'md:grid-cols-[minmax(240px,2fr)_130px_80px_80px_minmax(140px,1.5fr)_32px]'} gap-1 md:gap-1 items-center p-2 border rounded-lg hover:bg-muted/10 transition-colors text-sm`}
                     >
                       {/* Mobile labels */}
                       <div className="md:hidden flex flex-col space-y-3">
@@ -275,7 +289,7 @@ export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, 
                           />
                         </div>
                         
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className={`grid ${isAdmin ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
                           <div className="space-y-2">
                             <Label htmlFor={`cost-type-${cost.id}`} className="text-xs font-medium text-muted-foreground">Tipo</Label>
                             <TooltipProvider>
@@ -307,17 +321,19 @@ export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, 
                             </TooltipProvider>
                           </div>
                           
-                          <div className="space-y-2">
-                            <Label htmlFor={`cost-amount-${cost.id}`} className="text-xs font-medium text-muted-foreground">Monto</Label>
-                            <Input
-                              id={`cost-amount-${cost.id}`}
-                              type="number"
-                              value={cost.amount.toString()}
-                              onChange={(e) => updateCostAmount(cost.id, Number(e.target.value))}
-                              placeholder="Monto"
-                              className={`text-right ${rowInputClass}`}
-                            />
-                          </div>
+                          {isAdmin && (
+                            <div className="space-y-2">
+                              <Label htmlFor={`cost-amount-${cost.id}`} className="text-xs font-medium text-muted-foreground">Monto</Label>
+                              <Input
+                                id={`cost-amount-${cost.id}`}
+                                type="number"
+                                value={cost.amount.toString()}
+                                onChange={(e) => updateCostAmount(cost.id, Number(e.target.value))}
+                                placeholder="Monto"
+                                className={`text-right ${rowInputClass}`}
+                              />
+                            </div>
+                          )}
                         </div>
                         
                         <div className="grid grid-cols-2 gap-3">
@@ -400,50 +416,52 @@ export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, 
                         </div>
                         
                         <div className="flex items-center justify-between pt-2">
-                          <div className="flex items-center gap-1">
-                            <Calculator className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm font-medium">
-                              {(() => {
-                                const calculated = calculateCostAmount(cost);
-                                if (calculated <= 0) return "Calculado: $0,00";
-                                
-                                // Mostrar detalles del cálculo según el tipo
-                                switch (cost.calculationType) {
-                                  case "percentage":
-                                    return `${cost.amount}% de ${totalAmount.toLocaleString('es-AR')} = ${calculated.toLocaleString('es-AR', {
-                                      minimumFractionDigits: 2,
-                                      maximumFractionDigits: 2
-                                    })}`;
-                                  case "per_day":
-                                    return `${cost.days} días x ${cost.amount.toLocaleString('es-AR')} = ${calculated.toLocaleString('es-AR', {
-                                      minimumFractionDigits: 2,
-                                      maximumFractionDigits: 2
-                                    })}`;
-                                  case "per_day_per_person":
-                                    return `${cost.days} días x ${cost.persons} pers. x ${cost.amount.toLocaleString('es-AR')} = ${calculated.toLocaleString('es-AR', {
-                                      minimumFractionDigits: 2,
-                                      maximumFractionDigits: 2
-                                    })}`;
-                                  case "per_ticket_system":
-                                    return `${ticketQuantity} tickets x ${cost.amount.toLocaleString('es-AR')} = ${calculated.toLocaleString('es-AR', {
-                                      minimumFractionDigits: 2,
-                                      maximumFractionDigits: 2
-                                    })}`;
-                                  case "per_ticket_sector":
-                                    // Simplificado porque no tenemos fácil acceso al número exacto de tickets por sector en esta vista
-                                    return `Calculado: ${calculated.toLocaleString('es-AR', {
-                                      minimumFractionDigits: 2,
-                                      maximumFractionDigits: 2
-                                    })}`;
-                                  default:
-                                    return `Calculado: ${calculated.toLocaleString('es-AR', {
-                                      minimumFractionDigits: 2,
-                                      maximumFractionDigits: 2
-                                    })}`;
-                                }
-                              })()}
-                            </span>
-                          </div>
+                          {isAdmin && (
+                            <div className="flex items-center gap-1">
+                              <Calculator className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-sm font-medium">
+                                {(() => {
+                                  const calculated = calculateCostAmount(cost);
+                                  if (calculated <= 0) return "Calculado: $0,00";
+                                  
+                                  // Mostrar detalles del cálculo según el tipo
+                                  switch (cost.calculationType) {
+                                    case "percentage":
+                                      return `${cost.amount}% de ${totalAmount.toLocaleString('es-AR')} = ${calculated.toLocaleString('es-AR', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2
+                                      })}`;
+                                    case "per_day":
+                                      return `${cost.days} días x ${cost.amount.toLocaleString('es-AR')} = ${calculated.toLocaleString('es-AR', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2
+                                      })}`;
+                                    case "per_day_per_person":
+                                      return `${cost.days} días x ${cost.persons} pers. x ${cost.amount.toLocaleString('es-AR')} = ${calculated.toLocaleString('es-AR', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2
+                                      })}`;
+                                    case "per_ticket_system":
+                                      return `${ticketQuantity} tickets x ${cost.amount.toLocaleString('es-AR')} = ${calculated.toLocaleString('es-AR', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2
+                                      })}`;
+                                    case "per_ticket_sector":
+                                      // Simplificado porque no tenemos fácil acceso al número exacto de tickets por sector en esta vista
+                                      return `Calculado: ${calculated.toLocaleString('es-AR', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2
+                                      })}`;
+                                    default:
+                                      return `Calculado: ${calculated.toLocaleString('es-AR', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2
+                                      })}`;
+                                  }
+                                })()}
+                              </span>
+                            </div>
+                          )}
                           <Button
                             onClick={() => removeCost(cost.id)}
                             variant="destructive"
@@ -495,20 +513,20 @@ export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, 
                           </Tooltip>
                         </TooltipProvider>
                       </div>
-                      <div className="hidden md:block">
-                        <Input
-                          type="number"
-                          value={cost.amount.toString()}
-                          onChange={(e) => updateCostAmount(cost.id, Number(e.target.value))}
-                          placeholder="Monto"
-                          className={`text-right ${rowInputClass}`}
-                        />
-                      </div>
-                      {/* Días - Desktop */}
+                      {isAdmin && (
+                        <div className="hidden md:block">
+                          <Input
+                            type="number"
+                            value={cost.amount.toString()}
+                            onChange={(e) => updateCostAmount(cost.id, Number(e.target.value))}
+                            placeholder="Monto"
+                            className={`text-right ${rowInputClass}`}
+                          />
+                        </div>
+                      )}
                       <div className="hidden md:block">
                         {(cost.calculationType === "per_day" || cost.calculationType === "per_day_per_person") ? (
                           <Input
-                            id={`cost-days-${cost.id}`}
                             type="number"
                             min="1"
                             value={cost.days?.toString() ?? ""}
@@ -516,14 +534,12 @@ export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, 
                             className={rowInputClass}
                           />
                         ) : (
-                          <span className="flex h-10 items-center justify-center text-sm text-muted-foreground">—</span>
+                          <div className="text-center text-muted-foreground">—</div>
                         )}
                       </div>
-                      {/* Personas - Desktop */}
                       <div className="hidden md:block">
                         {cost.calculationType === "per_day_per_person" ? (
                           <Input
-                            id={`cost-persons-${cost.id}`}
                             type="number"
                             min="1"
                             value={cost.persons?.toString() ?? ""}
@@ -531,10 +547,9 @@ export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, 
                             className={rowInputClass}
                           />
                         ) : (
-                          <span className="flex h-10 items-center justify-center text-sm text-muted-foreground">—</span>
+                          <div className="text-center text-muted-foreground">—</div>
                         )}
                       </div>
-                      {/* Sectores - Desktop */}
                       <div className="hidden md:block">
                         {cost.calculationType === "per_ticket_sector" ? (
                           <DropdownMenu>
@@ -546,12 +561,12 @@ export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, 
                               >
                                 {ticketSectors && ticketSectors.length > 0
                                   ? cost.sectors && cost.sectors.length > 0
-                                    ? `${cost.sectors.length} seleccionado(s)`
-                                    : "Seleccionar"
-                                  : "Definir Sectores"}
+                                    ? `${cost.sectors.length} sel.`
+                                    : "Sel."
+                                  : "N/A"}
                               </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent className="max-h-60 overflow-auto">
+                            <DropdownMenuContent>
                               {ticketSectors && ticketSectors.length > 0 ? (
                                 ticketSectors.map((sector) => (
                                   <DropdownMenuCheckboxItem
@@ -572,10 +587,9 @@ export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, 
                             </DropdownMenuContent>
                           </DropdownMenu>
                         ) : (
-                          <span className="flex h-10 items-center justify-center text-sm text-muted-foreground">—</span>
+                          <div className="text-center text-muted-foreground">—</div>
                         )}
                       </div>
-                      {/* Botón eliminar - Desktop */}
                       <div className="hidden md:block">
                         <Button
                           onClick={() => removeCost(cost.id)}
@@ -583,8 +597,8 @@ export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, 
                           size="icon"
                           className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
                         >
-                          <Trash2 className="h-4 w-4" />
-                          <span className="sr-only">Eliminar costo</span>
+                          <X className="h-4 w-4" />
+                          <span className="sr-only">Eliminar</span>
                         </Button>
                       </div>
                     </div>
@@ -594,37 +608,21 @@ export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, 
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center p-6 text-center border-2 border-dashed rounded-lg mt-4">
-              <DollarSign className="h-12 w-12 text-muted-foreground mb-3 opacity-50" />
-              <p className="text-base text-muted-foreground">No hay costos operativos personalizados</p>
-              <p className="text-sm text-muted-foreground mt-1">Agregue costos utilizando el campo de arriba</p>
+              <DollarSign className="h-10 w-10 text-muted-foreground mb-2" />
+              <p className="text-sm text-muted-foreground">No hay costos operativos personalizados</p>
+              <p className="text-xs text-muted-foreground mt-1">Agregue costos utilizando el campo de arriba</p>
             </div>
           )}
         </div>
       </CardContent>
-      {value.length > 0 && (
-        <CardFooter className="border-t py-4 flex flex-col sm:flex-row gap-2 justify-between">
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-muted-foreground">Total Costos Personalizados:</span>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-6 w-6">
-                    <Info className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  <p>Suma de todos los costos calculados según su tipo</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-          <Badge variant="secondary" className="text-lg px-4 py-1.5 h-auto">
-            {totalCosts <= 0 ? "$0,00" : 
-              `$${totalCosts.toLocaleString('es-AR', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-              })}`
-            }
+      {value.length > 0 && isAdmin && (
+        <CardFooter className="border-t pt-4 flex justify-between">
+          <span className="font-semibold">Total Costos Operativos Personalizados:</span>
+          <Badge variant="secondary" className="text-lg px-3 py-1 h-auto">
+            ${totalCosts.toLocaleString('es-AR', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2
+            })}
           </Badge>
         </CardFooter>
       )}

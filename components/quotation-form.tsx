@@ -322,7 +322,7 @@ export function QuotationForm() {
                   .map((cost: any, idx: number) => ({
                     id: `op-auto-${idx}-${cost.name}`,
                     name: cost.name,
-                    amount: 0,
+                    amount: Number(cost.amount ?? cost.baseAmount) || 0,
                     calculationType: ((): any => {
                       // Si calculationType es inválido o ausente, deducir heurísticamente
                       const ct = (cost.calculationType || "").toString().toLowerCase();

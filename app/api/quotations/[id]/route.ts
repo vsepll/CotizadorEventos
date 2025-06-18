@@ -36,8 +36,9 @@ export async function GET(request: Request, { params }: { params: { id: string }
     console.log('Found quotation:', quotation)
     console.log('Quotation user ID:', quotation.userId)
 
-    if (quotation.userId !== session.user.id) {
-      console.log('User ID mismatch')
+    // Verificar permisos: debe ser el propietario o un administrador
+    if (quotation.userId !== session.user.id && session.user.role !== "ADMIN") {
+      console.log('User ID mismatch and not admin')
       return NextResponse.json({ error: "Unauthorized - Not your quotation" }, { status: 401 })
     }
 
@@ -80,7 +81,8 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
       return NextResponse.json({ error: "Quotation not found" }, { status: 404 })
     }
 
-    if (quotation.userId !== session.user.id) {
+    // Verificar permisos: debe ser el propietario o un administrador
+    if (quotation.userId !== session.user.id && session.user.role !== "ADMIN") {
       return NextResponse.json({ error: "Unauthorized - Not your quotation" }, { status: 401 })
     }
 

@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, DollarSign, Percent, Activity, CreditCard, Building
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { useMemo, useState } from "react"
+import { useSession } from "next-auth/react"
 
 interface QuotationResultsProps {
   id: string;
@@ -98,6 +99,10 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 export function QuotationResults({ id, results, comparisonResults, status = 'draft', onStatusChange }: QuotationResultsProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { data: session } = useSession()
+
+  // Verificar si el usuario es administrador
+  const isAdmin = session?.user?.role === "ADMIN"
 
   if (!results) {
     return null
@@ -130,6 +135,8 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
   }), []);
 
   const revenueData = useMemo(() => {
+    if (!isAdmin) return []; // No mostrar desglose para usuarios no-admin
+    
     console.log('Construyendo revenueData con:', {
       ticketingFee: results.ticketingFee,
       additionalServices: results.additionalServices
@@ -147,9 +154,11 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
         color: COLOR_PALETTE.revenue.additional 
       },
     ];
-  }, [results.ticketingFee, results.additionalServices, COLOR_PALETTE]);
+  }, [results.ticketingFee, results.additionalServices, COLOR_PALETTE, isAdmin]);
 
   const costsData = useMemo(() => {
+    if (!isAdmin) return []; // No mostrar desglose para usuarios no-admin
+    
     // Make sure we have valid data
     const validatedResults = results || {};
     
@@ -188,7 +197,7 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
     return allCosts
       .filter(item => item.value > 0)
       .sort((a, b) => b.value - a.value);
-  }, [results?.palco4Cost, results?.paywayFees?.total, results?.lineCost, results?.operationalCosts?.total, COLOR_PALETTE]);
+  }, [results?.palco4Cost, results?.paywayFees?.total, results?.lineCost, results?.operationalCosts?.total, COLOR_PALETTE, isAdmin]);
 
   const profitabilityData = useMemo(() => [
     { 
@@ -528,8 +537,10 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
     });
   }
 
-  // Safer approach to get operational costs
+  // Safer approach to get operational costs - solo para admins
   const getOperationalCosts = () => {
+    if (!isAdmin) return { total: 0 }; // Solo retornar total para usuarios no-admin
+    
     const opCosts = results.operationalCosts || {};
     const custom = Array.isArray(opCosts.custom) 
         ? opCosts.custom 
@@ -553,8 +564,10 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
     };
   };
   
-  // --- Define getTicketInfo function --- 
+  // --- Define getTicketInfo function (solo para admins) --- 
   const getTicketInfo = () => {
+    if (!isAdmin) return []; // No mostrar información detallada para usuarios no-admin
+    
     const ticketItems: DetailCardItem[] = [];
     
     // Format Ticket Quantity as integer string
@@ -608,8 +621,10 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
   }
   // --- End define getTicketInfo --- 
 
-  // Get operational costs including custom costs  
+  // Get operational costs including custom costs - solo para admins
   const operationalCostsObject = useMemo(() => {
+    if (!isAdmin) return { total: 0 }; // Solo total para usuarios no-admin
+    
     const opCosts = results.operationalCosts || {};
     const custom = Array.isArray(opCosts.custom) 
         ? opCosts.custom 
@@ -628,12 +643,14 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
       custom: custom,
       total: opCosts.total || 0
     };
-  }, [results]);
+  }, [results, isAdmin]);
     
-  const ticketInfo = useMemo(() => getTicketInfo(), [results]);
+  const ticketInfo = useMemo(() => getTicketInfo(), [results, isAdmin]);
   
-  // --- Transform operationalCosts for DetailCard --- 
+  // --- Transform operationalCosts for DetailCard (solo para admins) --- 
   const operationalCostsForCard: DetailCardItem[] = useMemo(() => {
+    if (!isAdmin) return []; // No mostrar desglose para usuarios no-admin
+    
     const items: DetailCardItem[] = [];
     if (operationalCostsObject.credentials > 0) {
       items.push({ label: "Credenciales", value: `$${formatNumber(operationalCostsObject.credentials)}` });
@@ -656,11 +673,13 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
     }
     // Add other operational costs if they are separate properties in the object
     return items;
-  }, [operationalCostsObject, results]);
+  }, [operationalCostsObject, results, isAdmin]);
   // --- End transform --- 
   
-  // --- Get Custom Operational Costs Breakdown ---  
+  // --- Get Custom Operational Costs Breakdown (solo para admins) ---  
   const customOperationalCostsForCard: DetailCardItem[] = useMemo(() => {
+    if (!isAdmin) return []; // No mostrar para usuarios no-admin
+    
     const items: DetailCardItem[] = [];
     // Use the custom costs from operationalCostsObject
     const customCosts = operationalCostsObject.custom || [];
@@ -708,8 +727,7 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
     }
         
     return items;
-  }, [operationalCostsObject.custom]);
-  // --- End Custom Operational Costs Breakdown ---
+  }, [operationalCostsObject.custom, isAdmin]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -766,8 +784,8 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
             {getStatusText(status)}
           </span>
           
-          {/* Action Buttons based on status - Eliminado el botón "Enviar a Revisión" */}
-          {status === 'review' && (
+          {/* Action Buttons based on status - Solo para admins */}
+          {isAdmin && status === 'review' && (
             <>
               <Button 
                 variant="destructive" 
@@ -808,6 +826,7 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
         </Card>
       )}
 
+      {/* Métricas principales - siempre visibles */}
       <div className="grid gap-4 md:grid-cols-2">
         <StatCard 
           title="Ingresos Totales" 
@@ -837,56 +856,78 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-6">
-        {operationalCostsForCard.length > 0 && (
-          <DetailCard 
-            title="Costos Operativos" 
-            items={operationalCostsForCard} 
-            icon={Building}
-          />
-        )}
-        {operationalCostsObject.custom && operationalCostsObject.custom.length > 0 && (
-          <DetailCard 
-            title="Desglose de Costos Operativos Personalizados" 
-            items={customOperationalCostsForCard} 
-            icon={DollarSign}
-          />
-        )}
-        {ticketInfo.length > 0 && (
-          <DetailCard 
-            title="Información de Plataforma y Tickets" 
-            items={ticketInfo} 
-            icon={Activity}
-          />
-        )}
-      </div>
+      {/* Solo mostrar desglose detallado para administradores */}
+      {isAdmin && (
+        <div className="grid grid-cols-1 gap-6">
+          {operationalCostsForCard.length > 0 && (
+            <DetailCard 
+              title="Costos Operativos" 
+              items={operationalCostsForCard} 
+              icon={Building}
+            />
+          )}
+          {operationalCostsObject.custom && operationalCostsObject.custom.length > 0 && (
+            <DetailCard 
+              title="Desglose de Costos Operativos Personalizados" 
+              items={customOperationalCostsForCard} 
+              icon={DollarSign}
+            />
+          )}
+          {ticketInfo.length > 0 && (
+            <DetailCard 
+              title="Información de Plataforma y Tickets" 
+              items={ticketInfo} 
+              icon={Activity}
+            />
+          )}
+        </div>
+      )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Análisis Gráfico</CardTitle>
-          <CardDescription>Visualización de ingresos, costos y rentabilidad.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="costs-pie">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="costs-pie">Costos (Torta)</TabsTrigger>
-              <TabsTrigger value="revenue-pie">Ingresos (Torta)</TabsTrigger>
-              <TabsTrigger value="profit-bar">Rentabilidad (Barras)</TabsTrigger>
-            </TabsList>
-            <TabsContent value="costs-pie" className="mt-4">
-              <CustomPieChart data={costsData} title="Desglose de Costos" />
-            </TabsContent>
-            <TabsContent value="revenue-pie" className="mt-4">
-              <CustomPieChart data={revenueData} title="Desglose de Ingresos" />
-            </TabsContent>
-             <TabsContent value="profit-bar" className="mt-4">
-                <p className="text-center text-muted-foreground p-8">Gráfico de Rentabilidad (Barras) no implementado aún.</p>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+      {/* Mostrar mensaje informativo para usuarios no-admin */}
+      {!isAdmin && (
+        <Card className="bg-blue-50 border-blue-200">
+          <CardContent className="pt-6">
+            <div className="flex items-center space-x-2 text-blue-700">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M12 16v-4"/>
+                <path d="M12 8h.01"/>
+              </svg>
+              <p>Se muestran únicamente las métricas de rentabilidad principales. El desglose detallado de costos está disponible para administradores.</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-      {comparisonResults && (
+      {/* Análisis gráfico - solo para administradores */}
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Análisis Gráfico</CardTitle>
+            <CardDescription>Visualización de ingresos, costos y rentabilidad.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Tabs defaultValue="costs-pie">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="costs-pie">Costos (Torta)</TabsTrigger>
+                <TabsTrigger value="revenue-pie">Ingresos (Torta)</TabsTrigger>
+                <TabsTrigger value="profit-bar">Rentabilidad (Barras)</TabsTrigger>
+              </TabsList>
+              <TabsContent value="costs-pie" className="mt-4">
+                <CustomPieChart data={costsData} title="Desglose de Costos" />
+              </TabsContent>
+              <TabsContent value="revenue-pie" className="mt-4">
+                <CustomPieChart data={revenueData} title="Desglose de Ingresos" />
+              </TabsContent>
+               <TabsContent value="profit-bar" className="mt-4">
+                  <p className="text-center text-muted-foreground p-8">Gráfico de Rentabilidad (Barras) no implementado aún.</p>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+      )}
+
+      {comparisonResults && isAdmin && (
          <Card>
            <CardHeader>
              <CardTitle>Análisis Comparativo</CardTitle>
