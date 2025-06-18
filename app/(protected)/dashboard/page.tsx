@@ -1,10 +1,11 @@
 "use client"
 
 import * as React from "react"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo, useCallback, memo } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import dynamic from 'next/dynamic'
 import { 
   ArrowUpRight, 
   BarChart3, 
@@ -26,7 +27,12 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/components/ui/use-toast"
-import { GlobalProfitability } from "@/components/global-profitability"
+
+// OPTIMIZACIÓN: Lazy loading del componente pesado GlobalProfitability
+const GlobalProfitability = dynamic(() => import("@/components/global-profitability").then(mod => ({ default: mod.GlobalProfitability })), {
+  loading: () => <Skeleton className="h-96 w-full" />,
+  ssr: false
+})
 
 interface QuotationStats {
   totalQuotations: number
@@ -55,7 +61,8 @@ interface SummaryCardProps {
   isLoading?: boolean
 }
 
-function SummaryCard({ title, value, description, icon, trend, isLoading }: SummaryCardProps) {
+// OPTIMIZACIÓN: Memoizar el componente SummaryCard
+const SummaryCard = memo(function SummaryCard({ title, value, description, icon, trend, isLoading }: SummaryCardProps) {
   if (isLoading) {
     return <Skeleton className="h-32" />
   }
@@ -81,60 +88,16 @@ function SummaryCard({ title, value, description, icon, trend, isLoading }: Summ
       )}
     </Card>
   )
-}
+})
 
-export default function DashboardPage() {
-  const { data: session, status } = useSession()
-  const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState<QuotationStats | null>(null)
-  const [activeTab, setActiveTab] = useState("overview")
-  const router = useRouter()
-  const { toast } = useToast()
-
-  useEffect(() => {
-    if (status === "unauthenticated") {
-      router.push("/login")
-      return
-    }
-
-    const fetchStats = async () => {
-      try {
-        const response = await fetch("/api/quotations/stats", {
-          credentials: "include"
-        })
-        if (!response.ok) {
-          throw new Error("Error al cargar las estadísticas")
-        }
-        const data = await response.json()
-        setStats(data)
-      } catch (error) {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "No se pudieron cargar las estadísticas",
-        })
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    if (status === "authenticated") {
-      fetchStats()
-    }
-  }, [status, router, toast])
-
-  const getStatusBadge = (profitability: number) => {
-    if (profitability > 0) {
-      return <Badge className="bg-green-500">{profitability.toFixed(2)}%</Badge>
-    } else if (profitability < 0) {
-      return <Badge variant="destructive">{profitability.toFixed(2)}%</Badge>
-    } else {
-      return <Badge variant="outline">0%</Badge>
-    }
-  }
-
+// OPTIMIZACIÓN: Memoizar el componente de la tabla de cotizaciones recientes
+const RecentQuotationsTable = memo(function RecentQuotationsTable({ 
+  quotations 
+}: { 
+  quotations: QuotationStats['recentQuotations'] 
+}) {
   // Helper function to display status with badges
-  const getQuotationStatusBadge = (status: string) => {
+  const getQuotationStatusBadge = useCallback((status: string) => {
     switch (status) {
       case 'DRAFT':
         return <Badge variant="secondary">Borrador</Badge>
@@ -147,9 +110,147 @@ export default function DashboardPage() {
       default:
         return <Badge variant="secondary">{status}</Badge>
     }
-  }
+  }, [])
 
-  const renderOverview = () => {
+  const getStatusBadge = useCallback((profitability: number) => {
+    if (profitability > 0) {
+      return <Badge className="bg-green-500">{profitability.toFixed(2)}%</Badge>
+    } else if (profitability < 0) {
+      return <Badge variant="destructive">{profitability.toFixed(2)}%</Badge>
+    } else {
+      return <Badge variant="outline">0%</Badge>
+    }
+  }, [])
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Tipo</TableHead>
+          <TableHead>Nombre</TableHead>
+          <TableHead>Fecha</TableHead>
+          <TableHead>Estado</TableHead>
+          <TableHead className="text-right">Rentabilidad</TableHead>
+          <TableHead></TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {quotations.map((quotation) => (
+          <TableRow key={quotation.id}>
+            <TableCell className="font-medium">{quotation.eventType}</TableCell>
+            <TableCell>{quotation.name}</TableCell>
+            <TableCell>
+              <div className="flex items-center">
+                <Calendar className="mr-1 h-3 w-3" />
+                {new Date(quotation.createdAt).toLocaleDateString("es-AR", {
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric",
+                })}
+              </div>
+            </TableCell>
+            <TableCell>{getQuotationStatusBadge(quotation.status)}</TableCell>
+            <TableCell className="text-right">
+              {getStatusBadge(quotation.grossProfitability)}
+            </TableCell>
+            <TableCell>
+              <Button variant="ghost" size="icon" asChild>
+                <Link href={`/quotations/${quotation.id}`}>
+                  <ArrowUpRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  )
+})
+
+export default function DashboardPage() {
+  const { data: session, status } = useSession()
+  const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState<QuotationStats | null>(null)
+  const [activeTab, setActiveTab] = useState("overview")
+  const router = useRouter()
+  const { toast } = useToast()
+
+  // OPTIMIZACIÓN: Memoizar el fetch de estadísticas
+  const fetchStats = useCallback(async () => {
+    try {
+      const response = await fetch("/api/quotations/stats", {
+        credentials: "include"
+      })
+      if (!response.ok) {
+        throw new Error("Error al cargar las estadísticas")
+      }
+      const data = await response.json()
+      setStats(data)
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "No se pudieron cargar las estadísticas",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }, [toast])
+
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/login")
+      return
+    }
+
+    if (status === "authenticated") {
+      fetchStats()
+    }
+  }, [status, router, fetchStats])
+
+  // OPTIMIZACIÓN: Memoizar las cards de resumen
+  const summaryCards = useMemo(() => {
+    if (!stats) return null
+
+    return [
+      {
+        title: "Ingresos Totales",
+        value: `$${stats.totalRevenue.toLocaleString("es-AR", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        })}`,
+        description: "Ingresos acumulados",
+        icon: <DollarSign className="h-4 w-4 text-muted-foreground" />
+      },
+      {
+        title: "Costos Totales",
+        value: `$${stats.totalCosts.toLocaleString("es-AR", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        })}`,
+        description: "Costos acumulados",
+        icon: <DollarSign className="h-4 w-4 text-muted-foreground" />
+      },
+      {
+        title: "Rentabilidad Promedio",
+        value: `${stats.averageProfitability.toLocaleString("es-AR", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        })}%`,
+        description: "Promedio de cotizaciones",
+        icon: <TrendingUp className="h-4 w-4 text-muted-foreground" />
+      },
+      {
+        title: "Total Cotizaciones",
+        value: `${stats.totalQuotations.toLocaleString()}`,
+        description: "Cotizaciones generadas",
+        icon: <FileText className="h-4 w-4 text-muted-foreground" />
+      }
+    ]
+  }, [stats])
+
+  // OPTIMIZACIÓN: Memoizar el componente overview
+  const renderOverview = useMemo(() => {
     if (status === "loading" || loading) {
       return (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -164,39 +265,9 @@ export default function DashboardPage() {
     return (
       <div className="space-y-8">
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <SummaryCard
-            title="Ingresos Totales"
-            value={`$${stats?.totalRevenue.toLocaleString("es-AR", {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2
-            })}`}
-            description="Ingresos acumulados"
-            icon={<DollarSign className="h-4 w-4 text-muted-foreground" />}
-          />
-          <SummaryCard
-            title="Costos Totales"
-            value={`$${stats?.totalCosts.toLocaleString("es-AR", {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2
-            })}`}
-            description="Costos acumulados"
-            icon={<DollarSign className="h-4 w-4 text-muted-foreground" />}
-          />
-          <SummaryCard
-            title="Rentabilidad Promedio"
-            value={`${stats?.averageProfitability.toLocaleString("es-AR", {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2
-            })}%`}
-            description="Promedio de cotizaciones"
-            icon={<TrendingUp className="h-4 w-4 text-muted-foreground" />}
-          />
-          <SummaryCard
-            title="Total Cotizaciones"
-            value={`${stats?.totalQuotations.toLocaleString()}`}
-            description="Cotizaciones generadas"
-            icon={<FileText className="h-4 w-4 text-muted-foreground" />}
-          />
+          {summaryCards?.map((card, index) => (
+            <SummaryCard key={index} {...card} />
+          ))}
         </div>
 
         <Card>
@@ -207,52 +278,14 @@ export default function DashboardPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Nombre</TableHead>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead className="text-right">Rentabilidad</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {stats?.recentQuotations.map((quotation) => (
-                  <TableRow key={quotation.id}>
-                    <TableCell className="font-medium">{quotation.eventType}</TableCell>
-                    <TableCell>{quotation.name}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center">
-                        <Calendar className="mr-1 h-3 w-3" />
-                        {new Date(quotation.createdAt).toLocaleDateString("es-AR", {
-                          day: "numeric",
-                          month: "long",
-                          year: "numeric",
-                        })}
-                      </div>
-                    </TableCell>
-                    <TableCell>{getQuotationStatusBadge(quotation.status)}</TableCell>
-                    <TableCell className="text-right">
-                      {getStatusBadge(quotation.grossProfitability)}
-                    </TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="icon" asChild>
-                        <Link href={`/quotations/${quotation.id}`}>
-                          <ArrowUpRight className="h-4 w-4" />
-                        </Link>
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            {stats?.recentQuotations && (
+              <RecentQuotationsTable quotations={stats.recentQuotations} />
+            )}
           </CardContent>
         </Card>
       </div>
     )
-  }
+  }, [status, loading, summaryCards, stats?.recentQuotations])
 
   return (
     <div className="space-y-8">
@@ -289,7 +322,7 @@ export default function DashboardPage() {
           )}
         </TabsList>
         <TabsContent value="overview" className="space-y-4">
-          {renderOverview()}
+          {renderOverview}
         </TabsContent>
         {session?.user?.role === "ADMIN" && (
           <TabsContent value="profitability" className="space-y-4">

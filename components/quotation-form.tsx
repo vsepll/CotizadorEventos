@@ -3,12 +3,12 @@
 import type React from "react"
 import type { QuotationResults } from "@/lib/calculations"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo, useCallback, memo } from "react"
+import dynamic from 'next/dynamic'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { QuotationResults as QuotationResultsComponent } from "@/components/quotation-results"
 import { useToast } from "@/components/ui/use-toast"
 import {
   Dialog,
@@ -44,15 +44,41 @@ import { Loader2 } from "lucide-react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { CustomOperationalCosts } from "@/components/custom-operational-costs"
-import { TicketSectorForm } from "@/components/ticket-sector-form"
 import { DatePicker } from "@/components/ui/date-picker"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
-import { CustomAdditionalServices, AdditionalService } from "@/components/custom-additional-services"
+
+// OPTIMIZACIÓN: Lazy loading de componentes pesados
+const QuotationResults = dynamic(() => import("@/components/quotation-results").then(mod => ({ default: mod.QuotationResults })), {
+  loading: () => <Skeleton className="h-96 w-full" />,
+  ssr: false
+})
+
+const CustomOperationalCosts = dynamic(() => import("@/components/custom-operational-costs").then(mod => ({ default: mod.CustomOperationalCosts })), {
+  loading: () => <Skeleton className="h-64 w-full" />,
+  ssr: false
+})
+
+const TicketSectorForm = dynamic(() => import("@/components/ticket-sector-form").then(mod => ({ default: mod.TicketSectorForm })), {
+  loading: () => <Skeleton className="h-64 w-full" />,
+  ssr: false
+})
+
+const CustomAdditionalServices = dynamic(() => import("@/components/custom-additional-services").then(mod => ({ default: mod.CustomAdditionalServices })), {
+  loading: () => <Skeleton className="h-32 w-full" />,
+  ssr: false
+})
+
+// OPTIMIZACIÓN: Importar tipos necesarios
+interface AdditionalService {
+  id: string;
+  name: string;
+  amount: number;
+  isPercentage: boolean;
+}
 
 interface TooltipLabelProps {
   htmlFor: string;
@@ -299,7 +325,10 @@ export function QuotationForm() {
           }
           const data = await response.json();
           
-          console.log('Fetched global parameters:', data);
+          // OPTIMIZACIÓN: Solo log en desarrollo
+          if (process.env.NODE_ENV === 'development') {
+            console.log('Fetched global parameters:', data);
+          }
           
           // Verificar si hay costos operativos personalizados para aplicar
           const hasCustomCosts = Array.isArray(data.customOperationalCosts) && data.customOperationalCosts.length > 0;
@@ -382,7 +411,10 @@ export function QuotationForm() {
           
           // Para el resto de parámetros, solo aplicar si el formulario está "vacío"
           if (!formData.eventType && !formData.platform.percentage) {
-            console.log('Applying default global parameters:', data);
+            // OPTIMIZACIÓN: Solo log en desarrollo
+            if (process.env.NODE_ENV === 'development') {
+              console.log('Applying default global parameters:', data);
+            }
             
             // Solo establecemos los parámetros si el formulario está "vacío"
             setFormData(prevState => ({
@@ -435,7 +467,10 @@ export function QuotationForm() {
           throw new Error("Failed to fetch employee types");
         }
         const data = await response.json();
-        console.log("Tipos de empleados cargados:", data);
+        // OPTIMIZACIÓN: Solo log en desarrollo
+        if (process.env.NODE_ENV === 'development') {
+          console.log("Tipos de empleados cargados:", data);
+        }
         setEmployeeTypes(data);
       } catch (error) {
         console.error("Error fetching employee types:", error);
@@ -462,7 +497,10 @@ export function QuotationForm() {
         
         // Verificar si existen métodos de pago en los parámetros globales
         if (data.paymentMethods && Array.isArray(data.paymentMethods)) {
-          console.log("Métodos de pago cargados:", data.paymentMethods);
+          // OPTIMIZACIÓN: Solo log en desarrollo
+          if (process.env.NODE_ENV === 'development') {
+            console.log("Métodos de pago cargados:", data.paymentMethods);
+          }
           setPaymentMethodTypes(data.paymentMethods);
         } else {
           // Si no existen en los parámetros, usar opciones predefinidas
@@ -816,7 +854,10 @@ export function QuotationForm() {
         additionalServiceItems: formData.additionalServiceItems 
       }
 
-      console.log('Sending quotation data for calculation:', quotationData)
+      // OPTIMIZACIÓN: Solo log en desarrollo
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Sending quotation data for calculation:', quotationData)
+      }
 
       // Primero calculamos la cotización en lugar de guardarla directamente
       const response = await fetch("/api/calculate-quotation", {
@@ -836,7 +877,10 @@ export function QuotationForm() {
 
       // Obtener los resultados calculados
       const responseData = await response.json()
-      console.log('Resultados recibidos de la API para visualizar:', responseData)
+      // OPTIMIZACIÓN: Solo log en desarrollo
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Resultados recibidos de la API para visualizar:', responseData)
+      }
       setResults(responseData)
       
       toast({
@@ -953,7 +997,10 @@ export function QuotationForm() {
         additionalServiceItems: formData.additionalServiceItems
       };
 
-      console.log('Sending complete quotation data:', formDataForSubmission);
+      // OPTIMIZACIÓN: Solo log en desarrollo
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Sending complete quotation data:', formDataForSubmission);
+      }
 
       const response = await fetch("/api/quotations", {
         method: "POST",
@@ -1588,7 +1635,7 @@ export function QuotationForm() {
               </Card>
             ) : results ? (
                 <div className="mt-8">
-                  <QuotationResultsComponent 
+                  <QuotationResults 
                     id={null as any}
                     results={results} 
                     onStatusChange={async (id: string, newStatus: "review" | "approved" | "rejected"): Promise<void> => { 

@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
-import { prisma } from "@/lib/prisma"
+import { PrismaClient } from "@prisma/client"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth"
+
+const prisma = new PrismaClient()
 
 // Define schema for ticket variation
 const TicketVariationSchema = z.object({
@@ -68,6 +72,13 @@ const QuotationInputSchema = z.object({
 
 type QuotationInput = z.infer<typeof QuotationInputSchema>
 
+// OPTIMIZACIÓN: Helper para logs solo en desarrollo
+const devLog = (message: string, data?: any) => {
+  if (process.env.NODE_ENV === 'development') {
+    console.log(message, data)
+  }
+}
+
 async function calculateQuotation(input: QuotationInput, globalParameters: any) {
   const {
     totalAmount = 0,
@@ -128,7 +139,7 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
   
   // If ticket sectors are defined, calculate service charge based on them
   if (ticketSectors.length > 0) {
-    console.log('Calculando cargo de servicio basado en sectores de tickets:', JSON.stringify(ticketSectors, null, 2));
+    devLog('Calculando cargo de servicio basado en sectores de tickets:', JSON.stringify(ticketSectors, null, 2));
     
     ticketSectors.forEach(sector => {
       sector.variations.forEach(variation => {
@@ -144,12 +155,12 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
           charge = (variation.price * variation.quantity) * (serviceCharge / 100);
         }
         
-        console.log(`Variación: ${variation.name}, Tipo: ${serviceChargeType}, Valor: ${serviceCharge}, Cargo calculado: ${charge}`);
+        devLog(`Variación: ${variation.name}, Tipo: ${serviceChargeType}, Valor: ${serviceCharge}, Cargo calculado: ${charge}`);
         ticketingFee += charge;
       });
     });
     
-    console.log('Cargo de servicio total calculado:', ticketingFee);
+    devLog('Cargo de servicio total calculado:', ticketingFee);
   }
   
   // Calculate additional services from items (percentage is now handled within the item itself)
@@ -302,7 +313,7 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
   const grossProfitability = totalCosts > 0 ? (grossMargin / totalCosts) * 100 : 0
 
   // Log calculations for debugging
-  console.log('Calculation details:', {
+  devLog('Calculation details:', {
     totalValue,
     ticketQuantity,
     ticketingFee,
@@ -321,7 +332,7 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
     grossProfitability
   })
 
-  console.log('Final Calculation Results:', { ticketQuantity, totalValue, platformFee, ticketingFee, additionalServices, paywayFees, lineCost, operationalCosts, totalRevenue, totalCosts, grossMargin, grossProfitability });
+  devLog('Final Calculation Results:', { ticketQuantity, totalValue, platformFee, ticketingFee, additionalServices, paywayFees, lineCost, operationalCosts, totalRevenue, totalCosts, grossMargin, grossProfitability });
 
   return {
     ticketQuantity,
@@ -380,27 +391,29 @@ async function ensureGlobalParameters() {
   return parameters
 }
 
+// OPTIMIZACIÓN: Añadir headers de cache
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    console.log('Received body:', body)
+    devLog('Received body:', body)
 
     const validatedInput = QuotationInputSchema.parse(body)
-    console.log('Validated input:', validatedInput)
+    devLog('Validated input:', validatedInput)
 
-    // Ya no usamos caché para los resultados
-    console.log('Calculating new result');
+    devLog('Calculating new result');
     const globalParameters = await ensureGlobalParameters()
     if (!globalParameters) {
       throw new Error("Failed to ensure global parameters")
     }
 
     const results = await calculateQuotation(validatedInput, globalParameters)
-    console.log('Calculation results:', results)
+    devLog('Calculation results:', results)
 
-    // Ya no guardamos resultados en caché
-
-    return NextResponse.json(results)
+    // OPTIMIZACIÓN: Configurar headers de cache apropiados
+    const response = NextResponse.json(results)
+    response.headers.set('Cache-Control', 'private, max-age=0, no-cache')
+    
+    return response
   } catch (error) {
     console.error('Server error:', error)
     if (error instanceof z.ZodError) {
