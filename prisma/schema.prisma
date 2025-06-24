@@ -77,6 +77,10 @@ model Quotation {
   estimatedPaymentDate DateTime?
   paymentStatus      String                @default("PENDING")
   status             QuotationStatus       @default(DRAFT)
+  // Nuevos campos para métricas de ROI y análisis financiero
+  roiMetrics         Json?                 // Almacena todas las métricas de ROI como JSON
+  financialMetrics   Json?                 // Almacena todas las métricas financieras como JSON
+  eventDurationDays  Int                   @default(1) // Duración del evento en días
   user               User                  @relation(fields: [userId], references: [id])
   customCosts        QuotationCustomCost[]
   ticketSectors      TicketSector[]

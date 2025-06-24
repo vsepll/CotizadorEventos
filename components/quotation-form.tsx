@@ -178,97 +178,47 @@ export function QuotationForm() {
   const { toast } = useToast()
   const router = useRouter()
   
-  // Manejar el estado de la pestaña activa
-  const [activeTab, setActiveTab] = useState(() => {
-    // Recuperar la pestaña activa de localStorage si existe
-    const savedTab = localStorage.getItem('quotationActiveTab')
-    return savedTab || "event"
-  })
+  // OPTIMIZACIÓN: Siempre empezar con pestaña inicial
+  const [activeTab, setActiveTab] = useState("event")
 
-  // Manejar el estado del formulario con valores guardados o iniciales
-  const [formData, setFormData] = useState<FormData>(() => {
-    try {
-      const savedData = localStorage.getItem('quotationFormData')
-      if (savedData) {
-        const parsedData = JSON.parse(savedData)
-        return {
-          ...parsedData,
-          platform: {
-            name: parsedData.platform?.name || "TICKET_PLUS",
-            percentage: parsedData.platform?.percentage || "0"
-          },
-          // Inicializar el nuevo campo paymentMethod
-          paymentMethod: parsedData.paymentMethod || {
-            id: "",
-            name: "",
-            percentage: 0
-          },
-          paymentMethods: {
-            credit: {
-              percentage: parsedData.paymentMethods?.credit?.percentage || "",
-              chargedTo: parsedData.paymentMethods?.credit?.chargedTo || "CONSUMER"
-            },
-            debit: {
-              percentage: parsedData.paymentMethods?.debit?.percentage || "",
-              chargedTo: parsedData.paymentMethods?.debit?.chargedTo || "CONSUMER"
-            },
-            cash: {
-              percentage: parsedData.paymentMethods?.cash?.percentage || "",
-              chargedTo: parsedData.paymentMethods?.cash?.chargedTo || "CONSUMER"
-            }
-          },
-          employees: parsedData.employees || [],
-          mobilityKilometers: parsedData.mobilityKilometers || "",
-          numberOfTolls: parsedData.numberOfTolls || "",
-          tollsCost: parsedData.tollsCost || "",
-          ticketSectors: parsedData.ticketSectors || [],
-          estimatedPaymentDate: parsedData.estimatedPaymentDate || null,
-          paymentStatus: parsedData.paymentStatus || "PENDING",
-          additionalServiceItems: parsedData.additionalServiceItems || []
-        }
+  // OPTIMIZACIÓN: Siempre empezar con valores por defecto limpios
+  const [formData, setFormData] = useState<FormData>({
+    eventType: "",
+    totalAmount: "",
+    ticketPrice: "",
+    platform: {
+      name: "TICKET_PLUS",
+      percentage: "0"
+    },
+    additionalServiceItems: [],
+    paymentMethod: {
+      id: "",
+      name: "",
+      percentage: 0
+    },
+    paymentMethods: {
+      credit: {
+        percentage: "",
+        chargedTo: "CONSUMER"
+      },
+      debit: {
+        percentage: "",
+        chargedTo: "CONSUMER"
+      },
+      cash: {
+        percentage: "",
+        chargedTo: "CONSUMER"
       }
-    } catch (error) {
-      console.error('Error loading saved form data:', error)
-    }
-    
-    return {
-      eventType: "",
-      totalAmount: "",
-      ticketPrice: "",
-      platform: {
-        name: "TICKET_PLUS",
-        percentage: "0"
-      },
-      additionalServiceItems: [],
-      paymentMethod: {
-        id: "",
-        name: "",
-        percentage: 0
-      },
-      paymentMethods: {
-        credit: {
-          percentage: "",
-          chargedTo: "CONSUMER"
-        },
-        debit: {
-          percentage: "",
-          chargedTo: "CONSUMER"
-        },
-        cash: {
-          percentage: "",
-          chargedTo: "CONSUMER"
-        }
-      },
-      credentialsCost: "",
-      employees: [],
-      mobilityKilometers: "",
-      numberOfTolls: "",
-      tollsCost: "",
-      customOperationalCosts: [],
-      ticketSectors: [],
-      estimatedPaymentDate: null,
-      paymentStatus: "PENDING"
-    }
+    },
+    credentialsCost: "",
+    employees: [],
+    mobilityKilometers: "",
+    numberOfTolls: "",
+    tollsCost: "",
+    customOperationalCosts: [],
+    ticketSectors: [],
+    estimatedPaymentDate: null,
+    paymentStatus: "PENDING"
   })
 
   const [results, setResults] = useState<QuotationResults | null>(null)
@@ -284,41 +234,14 @@ export function QuotationForm() {
   // Añadir estado para métodos de pago
   const [paymentMethodTypes, setPaymentMethodTypes] = useState<PaymentMethodType[]>([])
 
-  // Guardar la pestaña activa en localStorage cuando cambia
-  useEffect(() => {
-    localStorage.setItem('quotationActiveTab', activeTab)
-  }, [activeTab])
-
-  // Guardar datos del formulario en localStorage cuando cambian
-  // Use a ref to store the previous form data to avoid unnecessary updates
+  // OPTIMIZACIÓN: Eliminar persistencia automática para evitar confusión
+  // Ya no guardamos automáticamente en localStorage
   const prevFormDataRef = useRef<string | null>(null);
-  
-  useEffect(() => {
-    try {
-      // Using setTimeout to defer the localStorage update after render
-      // This helps avoid blocking the main thread during updates
-      const timeoutId = setTimeout(() => {
-      const formDataString = JSON.stringify(formData);
-      
-      // Only update localStorage if the data has actually changed
-      if (formDataString !== prevFormDataRef.current) {
-        localStorage.setItem('quotationFormData', formDataString);
-        prevFormDataRef.current = formDataString;
-      }
-      }, 300); // Small debounce delay to batch multiple rapid updates
 
-      // Cleanup timeout on unmount or before next effect run
-      return () => clearTimeout(timeoutId);
-    } catch (error) {
-      console.error('Error saving form data to localStorage:', error)
-    }
-  }, [formData]);
-
-    // Cargar parámetros globales solo si no hay datos guardados
+    // OPTIMIZACIÓN: Cargar parámetros globales por defecto al inicializar
     useEffect(() => {
       const fetchGlobalParameters = async () => {
         try {
-          // Utilizamos el endpoint que expone todos los parámetros globales (incluidos los cargados vía Excel)
           const response = await fetch('/api/admin/parameters');
           if (!response.ok) {
             throw new Error('Failed to fetch global parameters');
@@ -330,126 +253,64 @@ export function QuotationForm() {
             console.log('Fetched global parameters:', data);
           }
           
-          // Verificar si hay costos operativos personalizados para aplicar
-          const hasCustomCosts = Array.isArray(data.customOperationalCosts) && data.customOperationalCosts.length > 0;
-          const hasAdditionalServices = Array.isArray(data.customAdditionalServices) && data.customAdditionalServices.length > 0;
-          
-          // Siempre aplicar los costos operativos y servicios adicionales si existen
-          if (hasCustomCosts || hasAdditionalServices) {
-            setFormData(prevState => ({
-              ...prevState,
-              // Mezclar costos operativos personalizados globales con los que ya existan (evita duplicados por nombre)
-              customOperationalCosts: (() => {
-                if (!Array.isArray(data.customOperationalCosts)) return prevState.customOperationalCosts;
-
-                // Normalizar nombres para comparación sin acentos / mayúsculas
-                const normalize = (s: string) => s.trim().toLowerCase();
-
-                const existing = prevState.customOperationalCosts;
-                const extras = data.customOperationalCosts
-                  .filter((gc: any) => !existing.some(ec => normalize(ec.name) === normalize(gc.name)))
-                  .map((cost: any, idx: number) => ({
-                    id: `op-auto-${idx}-${cost.name}`,
-                    name: cost.name,
-                    amount: Number(cost.amount ?? cost.baseAmount) || 0,
-                    calculationType: ((): any => {
-                      // Si calculationType es inválido o ausente, deducir heurísticamente
-                      const ct = (cost.calculationType || "").toString().toLowerCase();
-
-                      if (["fixed", "$ fijo", "fijo"].includes(ct)) return "fixed";
-                      if (["percentage", "%", "% sobre venta", "porcentaje"].includes(ct)) return "percentage";
-                      if (["per_day", "$/día", "$/dia", "por día", "dia"].includes(ct)) return "per_day";
-                      if ([
-                        "per_day_per_person",
-                        "$/día x persona",
-                        "$/dia x persona",
-                        "dia x persona",
-                        "día x persona",
-                        "dia por persona",
-                        "día por persona"
-                      ].includes(ct)) return "per_day_per_person";
-                      if ([
-                        "per_ticket_system",
-                        "$/ticket (sistema)",
-                        "$/ticket sistema",
-                        "ticket sistema",
-                        "ticket x sistema",
-                        "ticket por sistema",
-                        "tickets sistema",
-                        "tickets x sistema"
-                      ].includes(ct)) return "per_ticket_system";
-                      if (["per_ticket_sector", "$/ticket x sector", "$/ticket sector"].includes(ct)) return "per_ticket_sector";
-
-                      // Heurísticas basadas en el nombre
-                      const normalizedName = String(cost.name).toLowerCase();
-                      if (/alquiler.*celular/.test(normalizedName) || /vi[aá]ticos/.test(normalizedName) || /hoteler[íi]a/.test(normalizedName)) {
-                        return "per_day_per_person";
-                      }
-                      if (/facturante/.test(normalizedName) || (/costo de sistema/.test(normalizedName) && /deporte/.test(normalizedName))) {
-                        return "per_ticket_system";
-                      }
-
-                      return "fixed";
-                    })(),
-                    days: cost.defaultDays ?? undefined,
-                    persons: cost.defaultPersons ?? undefined,
-                    sectors: cost.defaultSectors ?? undefined
-                  }));
-                return [...existing, ...extras];
-              })(),
-              // Aplicar servicios adicionales si están vacíos
-              additionalServiceItems: prevState.additionalServiceItems.length === 0 && Array.isArray(data.customAdditionalServices)
-                ? data.customAdditionalServices.map((service: any, idx: number) => ({
-                    id: `srv-${idx}-${service.name}`,
-                    name: service.name,
-                    amount: 0,
-                    isPercentage: Boolean(service.isPercentage)
-                  }))
-                : prevState.additionalServiceItems
-            }));
-          }
-          
-          // Para el resto de parámetros, solo aplicar si el formulario está "vacío"
-          if (!formData.eventType && !formData.platform.percentage) {
-            // OPTIMIZACIÓN: Solo log en desarrollo
-            if (process.env.NODE_ENV === 'development') {
-              console.log('Applying default global parameters:', data);
-            }
-            
-            // Solo establecemos los parámetros si el formulario está "vacío"
-            setFormData(prevState => ({
-              ...prevState,
-              platform: {
-                ...prevState.platform,
-                percentage: data.defaultPlatformFee.toString()
+          // Siempre aplicar parámetros por defecto
+          setFormData(prevState => ({
+            ...prevState,
+            platform: {
+              ...prevState.platform,
+              percentage: data.defaultPlatformFee.toString()
+            },
+            paymentMethods: {
+              credit: {
+                percentage: data.defaultCreditCardFee.toString(),
+                chargedTo: "CONSUMER"
               },
-              paymentMethods: {
-                credit: {
-                  percentage: data.defaultCreditCardFee.toString(),
-                  chargedTo: "CONSUMER"
-                },
-                debit: {
-                  percentage: data.defaultDebitCardFee.toString(),
-                  chargedTo: "CONSUMER"
-                },
-                cash: {
-                  percentage: data.defaultCashFee.toString(),
-                  chargedTo: "CONSUMER"
-                }
+              debit: {
+                percentage: data.defaultDebitCardFee.toString(),
+                chargedTo: "CONSUMER"
               },
-              // Si hay un sector de tickets, actualizamos sus valores por defecto de serviceCharge
-              ticketSectors: prevState.ticketSectors.length > 0 ? 
-                prevState.ticketSectors.map(sector => ({
-                  ...sector,
-                  variations: sector.variations.map(variation => ({
-                    ...variation,
-                    serviceCharge: variation.serviceCharge || data.defaultTicketingFee,
-                    serviceChargeType: variation.serviceChargeType || "percentage"
-                  }))
-                })) : 
-                prevState.ticketSectors
-            }));
-          }
+              cash: {
+                percentage: data.defaultCashFee.toString(),
+                chargedTo: "CONSUMER"
+              }
+            },
+            // Aplicar costos operativos personalizados si existen
+            customOperationalCosts: Array.isArray(data.customOperationalCosts) 
+              ? data.customOperationalCosts.map((cost: any, idx: number) => ({
+                  id: `op-auto-${idx}-${cost.name}`,
+                  name: cost.name,
+                  amount: Number(cost.amount ?? cost.baseAmount) || 0,
+                  calculationType: ((): any => {
+                    const ct = (cost.calculationType || "").toString().toLowerCase();
+                    if (["fixed", "$ fijo", "fijo"].includes(ct)) return "fixed";
+                    if (["percentage", "%", "% sobre venta", "porcentaje"].includes(ct)) return "percentage";
+                    if (["per_day", "$/día", "$/dia", "por día", "dia"].includes(ct)) return "per_day";
+                    if ([
+                      "per_day_per_person",
+                      "$/día x persona",
+                      "$/dia x persona",
+                      "dia x persona",
+                      "día x persona"
+                    ].includes(ct)) return "per_day_per_person";
+                    if (["per_ticket_system", "$/ticket (sistema)", "$/ticket sistema"].includes(ct)) return "per_ticket_system";
+                    if (["per_ticket_sector", "$/ticket x sector"].includes(ct)) return "per_ticket_sector";
+                    return "fixed";
+                  })(),
+                  days: cost.defaultDays ?? undefined,
+                  persons: cost.defaultPersons ?? undefined,
+                  sectors: cost.defaultSectors ?? undefined
+                }))
+              : [],
+            // Aplicar servicios adicionales si existen
+            additionalServiceItems: Array.isArray(data.customAdditionalServices)
+              ? data.customAdditionalServices.map((service: any, idx: number) => ({
+                  id: `srv-${idx}-${service.name}`,
+                  name: service.name,
+                  amount: 0,
+                  isPercentage: Boolean(service.isPercentage)
+                }))
+              : []
+          }));
         } catch (error) {
           console.error('Error fetching global parameters:', error);
         }
@@ -570,10 +431,8 @@ export function QuotationForm() {
     fetchPaymentMethods();
   }, []);
 
-  // Función mejorada para limpiar datos
+  // OPTIMIZACIÓN: Función simplificada para limpiar datos
   const clearFormData = () => {
-    localStorage.removeItem('quotationFormData');
-    localStorage.removeItem('quotationActiveTab');
     setActiveTab("event");
     setFormData({
       eventType: "",
@@ -615,6 +474,9 @@ export function QuotationForm() {
     });
     setResults(null);
     setIsClearModalOpen(false);
+    
+    // Recargar parámetros globales después de limpiar
+    window.location.reload();
   }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -909,16 +771,29 @@ export function QuotationForm() {
   }
 
   const handleSaveQuotation = async () => {
-    if (!results) return
-    if (!session) {
+    console.log('Starting save quotation process...')
+    
+    if (!results) {
+      console.log('No results available for saving')
       toast({
         title: "Error",
-        description: "You must be logged in to save quotations",
+        description: "Debes calcular la cotización antes de guardar",
+        variant: "destructive",
+      })
+      return
+    }
+    
+    if (!session) {
+      console.log('No session available')
+      toast({
+        title: "Error",
+        description: "Debes iniciar sesión para guardar cotizaciones",
         variant: "destructive",
       })
       return
     }
 
+    console.log('Setting isSaving to true...')
     setIsSaving(true)
     try {
       // Calculate total ticket quantity from sectors
@@ -997,10 +872,8 @@ export function QuotationForm() {
         additionalServiceItems: formData.additionalServiceItems
       };
 
-      // OPTIMIZACIÓN: Solo log en desarrollo
-      if (process.env.NODE_ENV === 'development') {
-        console.log('Sending complete quotation data:', formDataForSubmission);
-      }
+      console.log('Sending quotation data to server...')
+      console.log('Form data for submission:', formDataForSubmission);
 
       const response = await fetch("/api/quotations", {
         method: "POST",
@@ -1011,29 +884,49 @@ export function QuotationForm() {
         body: JSON.stringify(formDataForSubmission),
       })
 
+      console.log('Response received:', response.status, response.statusText)
+
       if (!response.ok) {
         const errorData = await response.json()
+        console.error('Server error response:', errorData)
         throw new Error(errorData.error || "Failed to save quotation")
       }
 
+      const savedQuotation = await response.json()
+      console.log('Quotation saved successfully:', savedQuotation)
+      
       toast({
-        title: "Success",
-        description: "Quotation saved successfully",
+        title: "Éxito",
+        description: "Cotización guardada exitosamente",
       })
       
-      // Limpiar datos después de guardar exitosamente
+      console.log('Clearing form data...')
       clearFormData()
       
-      // Redirect to dashboard
+      console.log('Closing save modal...')
+      setIsSaveModalOpen(false)
+      
+      console.log('Redirecting to dashboard...')
+      // Redirect immediately to dashboard
       router.push('/dashboard')
+      
+      // Also try window.location as backup
+      setTimeout(() => {
+        if (window.location.pathname === '/quotation') {
+          console.log('Router push failed, using window.location...')
+          window.location.href = '/dashboard'
+        }
+      }, 500)
     } catch (error) {
       console.error("Error saving quotation:", error)
+      console.error("Error details:", error)
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to save quotation. Please try again.",
+        description: error instanceof Error ? error.message : "Error al guardar la cotización. Por favor inténtalo de nuevo.",
         variant: "destructive",
       })
     } finally {
+      console.log('Resetting isSaving to false...')
       setIsSaving(false)
     }
   }

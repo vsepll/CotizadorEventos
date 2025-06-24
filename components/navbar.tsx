@@ -60,12 +60,6 @@ export function Navbar() {
               Cotizaciones
             </Link>
             <Link
-              href="/quotation"
-              className="transition-colors hover:text-foreground/80 text-foreground/60"
-            >
-              Nueva Cotización
-            </Link>
-            <Link
               href="/review-dashboard"
               className="transition-colors hover:text-foreground/80 text-foreground/60 flex items-center gap-2"
             >

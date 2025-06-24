@@ -76,7 +76,25 @@ const QuotationAdditionalServiceSchema = z.object({
   isPercentage: z.boolean()
 });
 
-// Modificar el esquema original para incluir additionalServiceItems
+// Esquemas para las nuevas métricas de ROI y financieras
+const ROIMetricsSchema = z.object({
+  basicROI: z.number(),
+  roiPerTicket: z.number(),
+  investmentMultiplier: z.number(),
+  contributionMargin: z.number(),
+  breakEvenTickets: z.number()
+});
+
+const FinancialMetricsSchema = z.object({
+  profitMarginOnSales: z.number(),
+  operationalEfficiency: z.number(),
+  costPerTicket: z.number(),
+  revenuePerTicket: z.number(),
+  operationalCostRatio: z.number(),
+  platformCostRatio: z.number()
+});
+
+// Modificar el esquema original para incluir additionalServiceItems y nuevas métricas
 const QuotationInputSchema = z.object({
   name: z.string().optional(),
   eventType: z.string(),
@@ -96,6 +114,10 @@ const QuotationInputSchema = z.object({
   ticketQuantity: z.number().optional(),
   // Agregar additionalServiceItems
   additionalServiceItems: z.array(QuotationAdditionalServiceSchema).optional(),
+  // Nuevas métricas de ROI y análisis financiero
+  roiMetrics: ROIMetricsSchema.optional(),
+  financialMetrics: FinancialMetricsSchema.optional(),
+  eventDurationDays: z.number().int().positive().optional().default(1),
   // Resto de campos existentes
   customOperationalCosts: z.array(z.object({
     id: z.string(),
@@ -239,6 +261,46 @@ export async function GET(request: Request) {
       }
     })
     
+    // Helper function to safely parse JSON fields
+    const parseJsonFields = (quotation: any) => {
+      try {
+        // Parse JSON fields if they are strings
+        const paywayFees = typeof quotation.paywayFees === 'string' 
+          ? JSON.parse(quotation.paywayFees) 
+          : quotation.paywayFees || {}
+        
+        const operationalCosts = typeof quotation.operationalCosts === 'string' 
+          ? JSON.parse(quotation.operationalCosts) 
+          : quotation.operationalCosts || {}
+        
+        // Parse nuevas métricas de ROI y financieras
+        const roiMetrics = typeof quotation.roiMetrics === 'string' 
+          ? JSON.parse(quotation.roiMetrics) 
+          : quotation.roiMetrics || null
+        
+        const financialMetrics = typeof quotation.financialMetrics === 'string' 
+          ? JSON.parse(quotation.financialMetrics) 
+          : quotation.financialMetrics || null
+        
+        return {
+          ...quotation,
+          paywayFees,
+          operationalCosts,
+          roiMetrics,
+          financialMetrics
+        }
+      } catch (error) {
+        console.error('Error parsing JSON fields:', error)
+        return {
+          ...quotation,
+          paywayFees: {},
+          operationalCosts: {},
+          roiMetrics: null,
+          financialMetrics: null
+        }
+      }
+    }
+
     // Transform the data for the frontend - Revert to using 'any' for now
     const transformedQuotations = quotations.map((quotation: any) => {
       // Calculate actual monetary amount
@@ -248,7 +310,7 @@ export async function GET(request: Request) {
         }, 0);
       }, 0);
       
-      return {
+      const baseTransform = {
         ...quotation,
         // In our database, totalAmount stores the number of tickets
         ticketQuantity: quotation.totalAmount,
@@ -260,6 +322,9 @@ export async function GET(request: Request) {
           email: quotation.user.email
         } : undefined
       };
+
+      // Parse JSON fields before returning
+      return parseJsonFields(baseTransform);
     });
     
     return NextResponse.json({
@@ -361,6 +426,12 @@ export async function POST(request: Request) {
       const palco4Cost = validatedInput.palco4Cost ?? 0;
       const lineCost = validatedInput.lineCost ?? 0;
       const paymentStatusValue = validatedInput.paymentStatus;
+      
+      // Nuevas métricas de ROI y financieras
+      const roiMetrics = validatedInput.roiMetrics ?? null;
+      const financialMetrics = validatedInput.financialMetrics ?? null;
+      const eventDurationDays = validatedInput.eventDurationDays ?? 1;
+      
       const ticketQuantity = validatedInput.ticketQuantity ?? ticketSectors.reduce((total, sector) => {
          return total + sector.variations.reduce((sectorTotal, variation) => {
            return sectorTotal + variation.quantity;
@@ -388,6 +459,10 @@ export async function POST(request: Request) {
             grossProfitability: grossProfitability, 
             palco4Cost: palco4Cost, 
             lineCost: lineCost,
+            // Nuevos campos para métricas de ROI y financieras
+            roiMetrics: roiMetrics as any,
+            financialMetrics: financialMetrics as any,
+            eventDurationDays: eventDurationDays,
             userId: session.user.id,
             estimatedPaymentDate: validatedInput.estimatedPaymentDate ? new Date(validatedInput.estimatedPaymentDate) : null,
             paymentStatus: paymentStatusValue,

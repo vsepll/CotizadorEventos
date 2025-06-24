@@ -32,56 +32,15 @@ const nextConfig = {
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
   },
   experimental: {
-    webpackBuildWorker: true,
-    parallelServerBuildTraces: true,
-    parallelServerCompiles: true,
     optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
   },
-  webpack: (config, { isServer, dev }) => {
+  webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
         path: false,
         crypto: false,
-      }
-    }
-
-    // OPTIMIZACIÓN: Tree shaking mejorado para librerías
-    config.optimization.usedExports = true
-    config.optimization.sideEffects = false
-
-    // OPTIMIZACIÓN: Splitting de chunks más granular
-    if (!isServer) {
-      config.optimization.splitChunks = {
-        chunks: 'all',
-        cacheGroups: {
-          vendor: {
-            test: /[\\/]node_modules[\\/]/,
-            name: 'vendors',
-            priority: 10,
-            chunks: 'all',
-          },
-          radix: {
-            test: /[\\/]node_modules[\\/]@radix-ui[\\/]/,
-            name: 'radix-ui',
-            priority: 20,
-            chunks: 'all',
-          },
-          icons: {
-            test: /[\\/]node_modules[\\/]lucide-react[\\/]/,
-            name: 'icons',
-            priority: 20,
-            chunks: 'all',
-          },
-          commons: {
-            name: 'commons',
-            minChunks: 2,
-            priority: 5,
-            chunks: 'all',
-            reuseExistingChunk: true,
-          },
-        },
       }
     }
 

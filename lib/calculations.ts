@@ -12,6 +12,24 @@ interface QuotationInput {
   supervisorsCost: number
   operatorsCost: number
   mobilityCost: number
+  eventDurationDays?: number
+}
+
+export interface ROIMetrics {
+  basicROI: number
+  roiPerTicket: number
+  investmentMultiplier: number
+  contributionMargin: number
+  breakEvenTickets: number
+}
+
+export interface FinancialMetrics {
+  profitMarginOnSales: number
+  operationalEfficiency: number
+  costPerTicket: number
+  revenuePerTicket: number
+  operationalCostRatio: number
+  platformCostRatio: number
 }
 
 export interface QuotationResults {
@@ -44,6 +62,8 @@ export interface QuotationResults {
   totalCosts: number
   grossMargin: number
   grossProfitability: number
+  roiMetrics: ROIMetrics
+  financialMetrics: FinancialMetrics
 }
 
 export function calculateQuotation(input: QuotationInput): QuotationResults {
@@ -61,6 +81,7 @@ export function calculateQuotation(input: QuotationInput): QuotationResults {
     supervisorsCost,
     operatorsCost,
     mobilityCost,
+    eventDurationDays = 1,
   } = input
 
   // Calculate ticket quantity
@@ -115,7 +136,28 @@ export function calculateQuotation(input: QuotationInput): QuotationResults {
   const grossMargin = totalRevenue - totalCosts
 
   // Calculate gross profitability
-  const grossProfitability = (grossMargin / totalRevenue) * 100
+  const grossProfitability = totalCosts > 0 ? (grossMargin / totalCosts) * 100 : 0
+
+  // ========== NUEVOS CÁLCULOS DE ROI Y MÉTRICAS FINANCIERAS ==========
+
+  // Cálculo de métricas ROI
+  const roiMetrics: ROIMetrics = {
+    basicROI: grossProfitability,
+    roiPerTicket: ticketQuantity > 0 ? grossMargin / ticketQuantity : 0,
+    investmentMultiplier: totalCosts > 0 ? (totalRevenue / totalCosts) : 0,
+    contributionMargin: totalRevenue > 0 ? (grossMargin / totalRevenue) * 100 : 0,
+    breakEvenTickets: ticketPrice > 0 ? Math.ceil(totalCosts / (ticketPrice * (ticketingPercentage / 100))) : 0,
+  }
+
+  // Cálculo de métricas financieras adicionales
+  const financialMetrics: FinancialMetrics = {
+    profitMarginOnSales: totalAmount > 0 ? (grossMargin / totalAmount) * 100 : 0,
+    operationalEfficiency: operationalCosts.total > 0 ? (totalRevenue / operationalCosts.total) : 0,
+    costPerTicket: ticketQuantity > 0 ? totalCosts / ticketQuantity : 0,
+    revenuePerTicket: ticketQuantity > 0 ? totalRevenue / ticketQuantity : 0,
+    operationalCostRatio: totalCosts > 0 ? (operationalCosts.total / totalCosts) * 100 : 0,
+    platformCostRatio: totalCosts > 0 ? ((palco4Cost + lineCost) / totalCosts) * 100 : 0,
+  }
 
   return {
     ticketQuantity,
@@ -130,6 +172,8 @@ export function calculateQuotation(input: QuotationInput): QuotationResults {
     totalCosts,
     grossMargin,
     grossProfitability,
+    roiMetrics,
+    financialMetrics,
   }
 }
 

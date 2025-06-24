@@ -51,6 +51,8 @@ export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, 
   const [formError, setFormError] = useState("")
   const { data: session } = useSession()
 
+
+
   // Verificar si el usuario es administrador
   const isAdmin = session?.user?.role === "ADMIN"
 

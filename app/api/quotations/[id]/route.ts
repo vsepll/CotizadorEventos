@@ -5,6 +5,33 @@ import { PrismaClient } from "@prisma/client"
 
 const prisma = new PrismaClient()
 
+// Helper function to safely parse JSON fields
+function parseJsonFields(quotation: any) {
+  try {
+    // Parse JSON fields if they are strings
+    const paywayFees = typeof quotation.paywayFees === 'string' 
+      ? JSON.parse(quotation.paywayFees) 
+      : quotation.paywayFees || {}
+    
+    const operationalCosts = typeof quotation.operationalCosts === 'string' 
+      ? JSON.parse(quotation.operationalCosts) 
+      : quotation.operationalCosts || {}
+    
+    return {
+      ...quotation,
+      paywayFees,
+      operationalCosts
+    }
+  } catch (error) {
+    console.error('Error parsing JSON fields:', error)
+    return {
+      ...quotation,
+      paywayFees: {},
+      operationalCosts: {}
+    }
+  }
+}
+
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
 
@@ -58,7 +85,10 @@ export async function GET(request: Request, { params }: { params: { id: string }
       totalAmount: monetaryAmount || 0
     };
 
-    return NextResponse.json(transformedQuotation)
+    // Parse JSON fields before sending to frontend
+    const parsedQuotation = parseJsonFields(transformedQuotation)
+
+    return NextResponse.json(parsedQuotation)
   } catch (error) {
     console.error("Error fetching quotation:", error)
     return NextResponse.json({ error: "Failed to fetch quotation" }, { status: 500 })

@@ -856,6 +856,142 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
         />
       </div>
 
+      {/* Métricas de ROI y Análisis Financiero */}
+      {results.roiMetrics && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Activity className="w-5 h-5" />
+              <span>Análisis de Retorno sobre la Inversión (ROI)</span>
+            </CardTitle>
+            <CardDescription>
+              Métricas avanzadas de rentabilidad y análisis financiero del evento
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">ROI por Ticket</h4>
+                <p className="text-2xl font-bold">
+                  ${formatNumber(results.roiMetrics.roiPerTicket)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Ganancia neta por ticket
+                </p>
+              </div>
+              
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">Múltiplo de Inversión</h4>
+                <p className="text-2xl font-bold">
+                  {formatNumber(results.roiMetrics.investmentMultiplier, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Veces que se recupera la inversión
+                </p>
+              </div>
+              
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">Margen de Contribución</h4>
+                <p className="text-2xl font-bold">
+                  {formatNumber(results.roiMetrics.contributionMargin, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  % del margen sobre ingresos
+                </p>
+              </div>
+              
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">Break-even (Tickets)</h4>
+                <p className="text-2xl font-bold">
+                  {formatNumber(results.roiMetrics.breakEvenTickets, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Tickets para cubrir costos
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Métricas Financieras Adicionales */}
+      {results.financialMetrics && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <CreditCard className="w-5 h-5" />
+              <span>Métricas Financieras Adicionales</span>
+            </CardTitle>
+            <CardDescription>
+              Indicadores de eficiencia y análisis por unidad
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">Margen sobre Ventas</h4>
+                <p className="text-2xl font-bold">
+                  {formatNumber(results.financialMetrics.profitMarginOnSales, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Rentabilidad sobre ventas totales
+                </p>
+              </div>
+              
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">Eficiencia Operativa</h4>
+                <p className="text-2xl font-bold">
+                  {formatNumber(results.financialMetrics.operationalEfficiency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Ingresos / Costos operativos
+                </p>
+              </div>
+              
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">Costo por Ticket</h4>
+                <p className="text-2xl font-bold">
+                  ${formatNumber(results.financialMetrics.costPerTicket)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Costo promedio por ticket
+                </p>
+              </div>
+              
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">Revenue por Ticket</h4>
+                <p className="text-2xl font-bold">
+                  ${formatNumber(results.financialMetrics.revenuePerTicket)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Ingreso promedio por ticket
+                </p>
+              </div>
+              
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">Ratio Costos Operativos</h4>
+                <p className="text-2xl font-bold">
+                  {formatNumber(results.financialMetrics.operationalCostRatio, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  % de costos operativos vs total
+                </p>
+              </div>
+              
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">Ratio Costos Plataforma</h4>
+                <p className="text-2xl font-bold">
+                  {formatNumber(results.financialMetrics.platformCostRatio, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  % de costos de plataforma vs total
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Solo mostrar desglose detallado para administradores */}
       {isAdmin && (
         <div className="grid grid-cols-1 gap-6">

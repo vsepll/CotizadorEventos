@@ -190,9 +190,12 @@ export function QuotationList({ status }: QuotationListProps) {
   }
 
   const handleExportPDF = async (quotation: Quotation) => {
+    console.log('🚀 Iniciando exportación PDF desde lista para cotización:', quotation.id);
+    
     setIsExporting(quotation.id)
     try {
       // Obtener los detalles completos de la cotización
+      console.log('📡 Obteniendo detalles de la cotización...');
       const response = await fetch(`/api/quotations/${quotation.id}`, {
         credentials: "include"
       })
@@ -200,19 +203,31 @@ export function QuotationList({ status }: QuotationListProps) {
         throw new Error("Failed to fetch quotation details")
       }
       const detailedQuotation = await response.json()
+      console.log('📄 Datos detallados obtenidos:', detailedQuotation);
       
       const doc = generateQuotationPDF(detailedQuotation)
-      doc.save(`cotizacion-${quotation.name.toLowerCase().replace(/\s+/g, '-')}.pdf`)
+      const fileName = `cotizacion-${quotation.name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}.pdf`
+      console.log('💾 Guardando PDF como:', fileName);
+      doc.save(fileName)
       
       toast({
-        title: "Éxito",
+        title: "✅ Éxito",
         description: "PDF exportado correctamente",
       })
+      console.log('✅ PDF exportado exitosamente desde lista');
     } catch (error) {
-      console.error("Error exporting PDF:", error)
+      console.error("❌ Error exporting PDF:", error)
+      console.error("📊 Cotización que causó el error:", quotation);
+      
+      let errorMessage = "No se pudo exportar el PDF. Por favor, intente nuevamente."
+      
+      if (error instanceof Error) {
+        errorMessage = `Error específico: ${error.message}`
+      }
+      
       toast({
-        title: "Error",
-        description: "No se pudo exportar el PDF. Por favor, intente nuevamente.",
+        title: "❌ Error",
+        description: errorMessage,
         variant: "destructive",
       })
     } finally {
