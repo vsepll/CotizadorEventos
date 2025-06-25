@@ -45,7 +45,7 @@ export const authOptions: NextAuthOptions = {
   ],
   session: {
     strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60,
+    maxAge: 30 * 24 * 60 * 60, // 30 días
   },
   callbacks: {
     async jwt({ token, user }) {
@@ -64,9 +64,30 @@ export const authOptions: NextAuthOptions = {
       }
       return session
     },
+    async redirect({ url, baseUrl }) {
+      // Simplificar redirecciones para mejor performance
+      
+      // Para URLs relativas, usar baseUrl
+      if (url.startsWith("/")) return `${baseUrl}${url}`
+      
+      // Para URLs del mismo dominio, permitir
+      if (url.startsWith(baseUrl)) return url
+      
+      // Por defecto, ir al dashboard
+      return `${baseUrl}/dashboard`
+    },
   },
   pages: {
     signIn: "/login",
+    error: "/login", // Redirigir errores a la página de login
   },
-  debug: true, // Siempre activar modo debug para ver todos los logs
+  events: {
+    async signIn({ user }) {
+      console.log("Usuario iniciando sesión:", user.email);
+    },
+    async signOut() {
+      console.log("Usuario cerrando sesión");
+    },
+  },
+  debug: false, // Desactivar en producción para mejor performance
 } 
