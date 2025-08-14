@@ -1,21 +1,23 @@
 import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import { PrismaClient } from "@prisma/client"
-
-const prisma = new PrismaClient()
+import { prisma } from "@/lib/prisma"
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
 
   if (!session?.user?.id) {
-    console.log('No session or user ID')
+    if (process.env.NODE_ENV !== "production") {
+      console.log('No session or user ID')
+    }
     return NextResponse.json({ error: "Unauthorized - No session" }, { status: 401 })
   }
 
   try {
-    console.log('Fetching quotation with ID:', params.id)
-    console.log('User ID:', session.user.id)
+    if (process.env.NODE_ENV !== "production") {
+      console.log('Fetching quotation with ID:', params.id)
+      console.log('User ID:', session.user.id)
+    }
     
     const quotation = await prisma.quotation.findUnique({
       where: { id: params.id },
@@ -29,15 +31,21 @@ export async function GET(request: Request, { params }: { params: { id: string }
     })
 
     if (!quotation) {
-      console.log('Quotation not found')
+      if (process.env.NODE_ENV !== "production") {
+        console.log('Quotation not found')
+      }
       return NextResponse.json({ error: "Quotation not found" }, { status: 404 })
     }
 
-    console.log('Found quotation:', quotation)
-    console.log('Quotation user ID:', quotation.userId)
+    if (process.env.NODE_ENV !== "production") {
+      console.log('Found quotation:', quotation)
+      console.log('Quotation user ID:', quotation.userId)
+    }
 
     if (quotation.userId !== session.user.id) {
-      console.log('User ID mismatch')
+      if (process.env.NODE_ENV !== "production") {
+        console.log('User ID mismatch')
+      }
       return NextResponse.json({ error: "Unauthorized - Not your quotation" }, { status: 401 })
     }
 

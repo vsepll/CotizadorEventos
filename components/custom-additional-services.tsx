@@ -165,10 +165,11 @@ export function CustomAdditionalServices({
                   <div className="w-32">
                     <Input
                       type="number"
-                      value={service.amount.toString()}
-                      onChange={(e) => updateServiceAmount(service.id, Number(e.target.value))}
+                      value={service.amount || ''}
+                      onChange={(e) => updateServiceAmount(service.id, Number(e.target.value) || 0)}
                       placeholder="Monto"
                       className="text-right"
+                      step="any"
                     />
                   </div>
                   <Button

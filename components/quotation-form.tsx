@@ -3,7 +3,7 @@
 import type React from "react"
 import type { QuotationResults } from "@/lib/calculations"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -249,7 +249,7 @@ export function QuotationForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [quotationName, setQuotationName] = useState("")
-  const [employeeTypes, setEmployeeTypes] = useState<EmployeeType[]>([])
+  // const [employeeTypes, setEmployeeTypes] = useState<EmployeeType[]>([])
   const [ticketSectors, setTicketSectors] = useState([])
   // Add a state to control the save modal visibility
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false)
@@ -426,29 +426,7 @@ export function QuotationForm() {
       fetchGlobalParameters()
     }, [toast])
 
-  // Agregar el efecto para cargar los tipos de empleados
-  useEffect(() => {
-    const fetchEmployeeTypes = async () => {
-      try {
-        const response = await fetch("/api/employee-types");
-        if (!response.ok) {
-          throw new Error("Failed to fetch employee types");
-        }
-        const data = await response.json();
-        console.log("Tipos de empleados cargados:", data);
-        setEmployeeTypes(data);
-      } catch (error) {
-        console.error("Error fetching employee types:", error);
-        toast({
-          title: "Error",
-          description: "No se pudieron cargar los tipos de personal. Por favor, intente de nuevo.",
-          variant: "destructive",
-        });
-      }
-    };
-
-    fetchEmployeeTypes();
-  }, [toast]);
+  // Employees module removed (no need to load employee types)
 
   // Agregar el efecto para cargar los tipos de métodos de pago
   useEffect(() => {
@@ -679,12 +657,12 @@ export function QuotationForm() {
     });
   }
 
-  const handleCustomOperationalCostsDataChange = (costs: Array<{ id: string, name: string, amount: number, calculationType: "fixed" | "percentage" | "per_day" | "per_day_per_person" | "per_ticket_system" | "per_ticket_sector", days?: number, persons?: number, sectors?: string[] }>) => {
+  const handleCustomOperationalCostsDataChange = useCallback((costs: Array<{ id: string, name: string, amount: number, calculationType: "fixed" | "percentage" | "per_day" | "per_day_per_person" | "per_ticket_system" | "per_ticket_sector", days?: number, persons?: number, sectors?: string[] }>) => {
     setFormData(prev => ({
       ...prev,
       customOperationalCosts: costs
     }))
-  }
+  }, [])
 
   const handleTicketSectorsDataChange = (newTicketSectors: Array<{
     name: string;
@@ -705,12 +683,27 @@ export function QuotationForm() {
     }
   }
 
-  const handleAdditionalServicesDataChange = (services: AdditionalService[]) => {
+  const handleAdditionalServicesDataChange = useCallback((services: AdditionalService[]) => {
     setFormData(prev => ({
       ...prev,
       additionalServiceItems: services
     }));
-  };
+  }, []);
+
+  // Memoize total value and quantity derived from ticket sectors
+  const ticketSectorsTotals = useMemo(() => {
+    let totalValue = 0;
+    let totalQuantity = 0;
+    if (formData.ticketSectors && formData.ticketSectors.length > 0) {
+      formData.ticketSectors.forEach(sector => {
+        sector.variations.forEach(variation => {
+          totalValue += variation.price * variation.quantity;
+          totalQuantity += variation.quantity;
+        });
+      });
+    }
+    return { totalValue, totalQuantity };
+  }, [formData.ticketSectors]);
 
   // Añadir una función para adaptar los resultados al formato esperado por QuotationResults
   const adaptResults = (apiResults: any) => {
@@ -800,11 +793,6 @@ export function QuotationForm() {
         paymentMethods: paymentMethodsData,
         // Los demás campos también se acceden desde formData
         credentialsCost: Number(formData.credentialsCost),
-        employees: formData.employees.map(emp => ({
-          ...emp,
-          quantity: Number(emp.quantity),
-          days: Number(emp.days)
-        })),
         mobilityKilometers: Number(formData.mobilityKilometers),
         numberOfTolls: Number(formData.numberOfTolls),
         tollsCost: Number(formData.tollsCost),
@@ -849,8 +837,7 @@ export function QuotationForm() {
         ...prev,
         totalAmount: String(totalAmount),
         ticketPrice: String(averageTicketPrice),
-        // Preservar datos de empleados
-        employees: prev.employees
+        // Employees removed from this flow
       }))
     } catch (error) {
       console.error("Error calculating quotation:", error)
@@ -916,11 +903,6 @@ export function QuotationForm() {
           }
         },
         credentialsCost: Number(formData.credentialsCost) || 0,
-        employees: formData.employees.map(emp => ({
-          employeeTypeId: emp.employeeTypeId,
-          quantity: Number(emp.quantity),
-          days: Number(emp.days)
-        })),
         mobilityKilometers: Number(formData.mobilityKilometers) || 0,
         numberOfTolls: Number(formData.numberOfTolls) || 0,
         tollsCost: Number(formData.tollsCost) || 0,
@@ -1257,208 +1239,29 @@ export function QuotationForm() {
                 </CardContent>
               </Card>
               
-              {/* General Costs Card */}
-              <Card>
-                 <CardHeader>
-                  <CardTitle>Costos Operativos Generales</CardTitle>
-                  <CardDescription>Costos asociados a credenciales y movilidad.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <TooltipLabel htmlFor="credentialsCost" label="Costo Credenciales" tooltip="Costo total estimado para credenciales (opcional)." />
-                      <Input 
-                        id="credentialsCost" 
-                        name="credentialsCost"
-                        type="number" 
-                        value={formData.credentialsCost} 
-                        onChange={handleInputChange} 
-                        placeholder="Ej: 5000" 
-                        min="0"
-                        step="100"
-                      />
-                    </div>
-                  </div>
-                  <Separator />
-                  <p className="font-medium text-sm">Movilidad</p>
-                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                     <div>
-                        <TooltipLabel htmlFor="mobilityKilometers" label="Kilómetros Totales" tooltip="Distancia total estimada a recorrer (ida y vuelta)." required />
-                        <Input 
-                          id="mobilityKilometers" 
-                          name="mobilityKilometers"
-                          type="number" 
-                          value={formData.mobilityKilometers} 
-                          onChange={handleInputChange} 
-                          placeholder="Ej: 150" 
-                          min="0"
-                          step="10"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <TooltipLabel htmlFor="numberOfTolls" label="N° Peajes (Ida y Vuelta)" tooltip="Cantidad total de peajes en el trayecto completo." required />
-                        <Input 
-                          id="numberOfTolls" 
-                          name="numberOfTolls"
-                          type="number" 
-                          value={formData.numberOfTolls} 
-                          onChange={handleInputChange} 
-                          placeholder="Ej: 4" 
-                          min="0"
-                          step="1"
-                          required
-                        />
-                      </div>
-                       <div>
-                        <TooltipLabel htmlFor="tollsCost" label="Costo Promedio Peaje" tooltip="Costo promedio de cada peaje." required />
-                        <Input 
-                          id="tollsCost" 
-                          name="tollsCost"
-                          type="number" 
-                          value={formData.tollsCost} 
-                          onChange={handleInputChange} 
-                          placeholder="Ej: 300" 
-                          min="0"
-                          step="50"
-                          required
-                        />
-                      </div>
-                   </div>
-                </CardContent>
-              </Card>
+              {/* General Costs merged into Custom Operational Costs as 'Movilidad' */}
               
-              {/* Employees Card */}
-              <Card>
-                 <CardHeader>
-                  <CardTitle>Personal Afectado</CardTitle>
-                  <CardDescription>Selecciona el tipo, cantidad y días de trabajo del personal necesario.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <div className="space-y-4">
-                      {formData.employees.map((employee, index) => (
-                        <div key={index} className="flex flex-wrap sm:flex-nowrap gap-4 items-end border-b pb-4 last:border-b-0 last:pb-0">
-                          <div className="flex-grow min-w-[150px]">
-                            <Label htmlFor={`employeeType-${index}`}>Tipo</Label>
-                            <Select
-                              value={employee.employeeTypeId}
-                              onValueChange={(value) => {
-                                const newEmployees = [...formData.employees];
-                                newEmployees[index].employeeTypeId = value;
-                                setFormData({ ...formData, employees: newEmployees });
-                              }}
-                            >
-                              <SelectTrigger id={`employeeType-${index}`}>
-                                <SelectValue placeholder="Seleccionar Tipo" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {employeeTypes.map((type) => (
-                                  <SelectItem key={type.id} value={type.id}>
-                                    {type.name} ({formatCurrency(type.costPerDay)}/día)
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="w-20 flex-shrink-0">
-                            <Label htmlFor={`employeeQuantity-${index}`}>Cant.</Label>
-                            <Input
-                              id={`employeeQuantity-${index}`}
-                              type="number"
-                              value={employee.quantity}
-                              onChange={(e) => {
-                                const newEmployees = [...formData.employees];
-                                newEmployees[index].quantity = e.target.value;
-                                setFormData({ ...formData, employees: newEmployees });
-                              }}
-                              min="1"
-                              placeholder="Cant."
-                              required
-                            />
-                          </div>
-                          <div className="w-20 flex-shrink-0">
-                            <Label htmlFor={`employeeDays-${index}`}>Días</Label>
-                            <Input
-                              id={`employeeDays-${index}`}
-                              type="number"
-                              value={employee.days}
-                              onChange={(e) => {
-                                const newEmployees = [...formData.employees];
-                                newEmployees[index].days = e.target.value;
-                                setFormData({ ...formData, employees: newEmployees });
-                              }}
-                              min="1"
-                              placeholder="Días"
-                              required
-                            />
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-muted-foreground hover:text-destructive flex-shrink-0"
-                            onClick={() => {
-                              const newEmployees = formData.employees.filter((_, i) => i !== index);
-                              setFormData({ ...formData, employees: newEmployees });
-                            }}
-                          >
-                            <X className="h-4 w-4" />
-                            <span className="sr-only">Eliminar</span>
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                    <Button 
-                        variant="outline"
-                        onClick={() => setFormData({ ...formData, employees: [...formData.employees, { employeeTypeId: '', quantity: '1', days: '1' }] })} 
-                        className="mt-4"
-                    >
-                      <Plus className="w-4 h-4 mr-2" /> Añadir Personal
-                    </Button>
-                </CardContent>
-              </Card>
+              {/* Employees Card removed as requested */}
               
-              {/* Custom Operational Costs Card */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Costos Operativos Personalizados</CardTitle>
-                  <CardDescription>Añade cualquier otro costo operativo específico del evento.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {/* Calculamos los valores totales a partir de los sectores de tickets */}
-                  {(() => {
-                    // Calcular el valor total y la cantidad total de tickets
-                    let calculatedTotalValue = 0;
-                    let calculatedTotalQuantity = 0;
-                    
-                    if (formData.ticketSectors && formData.ticketSectors.length > 0) {
-                      formData.ticketSectors.forEach(sector => {
-                        sector.variations.forEach(variation => {
-                          calculatedTotalValue += variation.price * variation.quantity;
-                          calculatedTotalQuantity += variation.quantity;
-                        });
-                      });
-                    }
-                    
-                    return (
+              {/* Costos Operativos */}
                       <CustomOperationalCosts 
                         value={formData.customOperationalCosts} 
                         onChange={handleCustomOperationalCostsDataChange} 
                         ticketSectors={formData.ticketSectors}
-                        totalAmount={calculatedTotalValue}
-                        ticketQuantity={calculatedTotalQuantity}
-                      />
-                    );
-                  })()}
-                </CardContent>
-              </Card>
+                totalAmount={ticketSectorsTotals.totalValue}
+                ticketQuantity={ticketSectorsTotals.totalQuantity}
+                mobilityKilometers={Number(formData.mobilityKilometers) || 0}
+                numberOfTolls={Number(formData.numberOfTolls) || 0}
+                tollsCost={Number(formData.tollsCost) || 0}
+                onMobilityChange={(field, value) => setFormData(prev => ({ ...prev, [field]: String(value) }))}
+              />
 
               {/* Agregar componente de Servicios Adicionales Personalizados */}
               <Separator className="my-6" />
               <CustomAdditionalServices
                 value={formData.additionalServiceItems}
                 onChange={handleAdditionalServicesDataChange}
-                // Podríamos pasar el totalAmount calculado si es necesario para porcentajes
-                // totalAmount={calculatedTotalAmount} 
+                totalAmount={ticketSectorsTotals.totalValue}
               />
             </div>
           </TabsContent>

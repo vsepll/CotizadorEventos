@@ -23,7 +23,7 @@ const QuotationInputSchema = z.object({
   totalAmount: z.number().positive().optional(),
   ticketPrice: z.number().positive().optional(),
   platform: z.object({
-    name: z.enum(["TICKET_PLUS", "PALCO4"]),
+    name: z.enum(["TICKET_PLUS", "PALCO4", "SVT"]),
     percentage: z.number().min(0).max(100)
   }),
   additionalServiceItems: z.array(z.object({
@@ -105,6 +105,8 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
     ticketQuantity = calculatedTotalQuantity;
   }
   
+  const isPalco4 = platform.name === "PALCO4" || platform.name === "SVT"
+  
   // Determine event days. If employees array is provided we will use the maximum number of days among them as a proxy.
   // Defaults to 1 if not definable.
   const eventDays = employees.length > 0
@@ -119,7 +121,7 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
   }
 
   // Calculate platform fee (as a cost)
-  const platformFee = platform.name === "PALCO4" 
+  const platformFee = isPalco4 
     ? ticketQuantity * globalParameters.palco4FeePerTicket 
     : totalValue * (platform.percentage / 100)
 
@@ -128,7 +130,9 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
   
   // If ticket sectors are defined, calculate service charge based on them
   if (ticketSectors.length > 0) {
-    console.log('Calculando cargo de servicio basado en sectores de tickets:', JSON.stringify(ticketSectors, null, 2));
+    if (process.env.NODE_ENV !== "production") {
+      console.log('Calculando cargo de servicio basado en sectores de tickets:', JSON.stringify(ticketSectors, null, 2));
+    }
     
     ticketSectors.forEach(sector => {
       sector.variations.forEach(variation => {
@@ -149,7 +153,9 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
       });
     });
     
-    console.log('Cargo de servicio total calculado:', ticketingFee);
+    if (process.env.NODE_ENV !== "production") {
+      console.log('Cargo de servicio total calculado:', ticketingFee);
+    }
   }
   
   // Calculate additional services from items (percentage is now handled within the item itself)
@@ -184,7 +190,7 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
   )
 
   // Calculate Line cost (only if not using Palco4)
-  const lineCost = platform.name === "PALCO4" ? 0 : totalValue * (globalParameters.lineCostPercentage / 100)
+  const lineCost = isPalco4 ? 0 : totalValue * (globalParameters.lineCostPercentage / 100)
 
   // Calculate employee costs
   let employeeCosts = 0
@@ -267,7 +273,7 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
   // Calculate operational costs
   const operationalCosts = {
     credentials: Number(globalParameters.defaultCredentialsCost) || 0,
-    ticketing: platform.name === "PALCO4" ? 0 : ticketQuantity * globalParameters.ticketingCostPerTicket,
+    ticketing: isPalco4 ? 0 : ticketQuantity * globalParameters.ticketingCostPerTicket,
     employees: employeeCosts,
     mobility: totalMobilityCost,
     custom: computedCustomOperationalCosts,
@@ -302,7 +308,8 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
   const grossProfitability = totalCosts > 0 ? (grossMargin / totalCosts) * 100 : 0
 
   // Log calculations for debugging
-  console.log('Calculation details:', {
+  if (process.env.NODE_ENV !== "production") {
+    console.log('Calculation details:', {
     totalValue,
     ticketQuantity,
     ticketingFee,
@@ -319,9 +326,10 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
     totalCosts,
     grossMargin,
     grossProfitability
-  })
-
-  console.log('Final Calculation Results:', { ticketQuantity, totalValue, platformFee, ticketingFee, additionalServices, paywayFees, lineCost, operationalCosts, totalRevenue, totalCosts, grossMargin, grossProfitability });
+    })
+    
+    console.log('Final Calculation Results:', { ticketQuantity, totalValue, platformFee, ticketingFee, additionalServices, paywayFees, lineCost, operationalCosts, totalRevenue, totalCosts, grossMargin, grossProfitability });
+  }
 
   return {
     ticketQuantity,
@@ -331,7 +339,7 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
     ticketingFee,
     additionalServices,
     paywayFees,
-    palco4Cost: platform.name === "PALCO4" ? platformFee : 0,
+    palco4Cost: isPalco4 ? platformFee : 0,
     lineCost,
     operationalCosts,
     totalRevenue,
@@ -383,20 +391,26 @@ async function ensureGlobalParameters() {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    console.log('Received body:', body)
+    if (process.env.NODE_ENV !== "production") {
+      console.log('Received body:', body)
+    }
 
     const validatedInput = QuotationInputSchema.parse(body)
-    console.log('Validated input:', validatedInput)
+    if (process.env.NODE_ENV !== "production") {
+      console.log('Validated input:', validatedInput)
+      console.log('Calculating new result');
+    }
 
     // Ya no usamos caché para los resultados
-    console.log('Calculating new result');
     const globalParameters = await ensureGlobalParameters()
     if (!globalParameters) {
       throw new Error("Failed to ensure global parameters")
     }
 
     const results = await calculateQuotation(validatedInput, globalParameters)
-    console.log('Calculation results:', results)
+    if (process.env.NODE_ENV !== "production") {
+      console.log('Calculation results:', results)
+    }
 
     // Ya no guardamos resultados en caché
 

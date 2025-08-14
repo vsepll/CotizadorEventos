@@ -43,9 +43,14 @@ interface CustomOperationalCostsProps {
   ticketQuantity?: number
   // Ticket sectors available in the quotation form – needed for sector selector
   ticketSectors?: TicketSectorOption[]
+  // Movilidad (opcional) para integrarla en este bloque
+  mobilityKilometers?: number
+  numberOfTolls?: number
+  tollsCost?: number
+  onMobilityChange?: (field: 'mobilityKilometers' | 'numberOfTolls' | 'tollsCost', value: number) => void
 }
 
-export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, ticketQuantity = 0, ticketSectors }: CustomOperationalCostsProps) {
+export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, ticketQuantity = 0, ticketSectors, mobilityKilometers = 0, numberOfTolls = 0, tollsCost = 0, onMobilityChange }: CustomOperationalCostsProps) {
   const [newCostName, setNewCostName] = useState("")
   const [formError, setFormError] = useState("")
 
@@ -198,21 +203,69 @@ export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, 
     }
   }
 
-  const totalCosts = value.reduce((sum, cost) => sum + calculateCostAmount(cost), 0);
+  const totalCosts = useMemo(() => {
+    return value.reduce((sum, cost) => sum + calculateCostAmount(cost), 0)
+  }, [value, totalAmount, ticketQuantity, ticketSectors]);
 
   return (
     <Card className="w-full">
       <CardHeader className="border-b">
         <CardTitle className="flex items-center gap-2">
           <DollarSign className="h-5 w-5 text-primary" />
-          Costos Operativos Personalizados
+          Costos Operativos
         </CardTitle>
         <CardDescription>
-          Agregue costos operativos adicionales específicos para este evento
+          Defina movilidad y costos operativos personalizados del evento
         </CardDescription>
       </CardHeader>
       <CardContent className="pt-6">
         <div className="space-y-6">
+          {/* Movilidad - compacto y discreto */}
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">Movilidad</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              <div className="space-y-1">
+                <Label htmlFor="mobilityKilometers" className="text-[11px]">Km totales</Label>
+                <Input
+                  id="mobilityKilometers"
+                  type="number"
+                  min={0}
+                  step={10}
+                  value={Number(mobilityKilometers).toString()}
+                  onChange={(e) => onMobilityChange?.('mobilityKilometers', Number(e.target.value))}
+                  className={rowInputClass}
+                  placeholder="Ej: 150"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="numberOfTolls" className="text-[11px]">N° peajes</Label>
+                <Input
+                  id="numberOfTolls"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={Number(numberOfTolls).toString()}
+                  onChange={(e) => onMobilityChange?.('numberOfTolls', Number(e.target.value))}
+                  className={rowInputClass}
+                  placeholder="Ej: 4"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="tollsCost" className="text-[11px]">$ peaje</Label>
+                <Input
+                  id="tollsCost"
+                  type="number"
+                  min={0}
+                  step={50}
+                  value={Number(tollsCost).toString()}
+                  onChange={(e) => onMobilityChange?.('tollsCost', Number(e.target.value))}
+                  className={rowInputClass}
+                  placeholder="Ej: 300"
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Agregar nuevo costo */}
           <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
             <div className="flex-1 w-full">
@@ -255,7 +308,7 @@ export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, 
               </div>
               
               {/* Lista de costos en scroll area para mejor manejo en mobile */}
-              <ScrollArea className="h-full">
+              <ScrollArea className="max-h-96 md:max-h-[420px]">
                 <div className="space-y-3 pb-2 pr-4">
                   {value.map((cost) => (
                     <div
@@ -312,6 +365,7 @@ export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, 
                             <Input
                               id={`cost-amount-${cost.id}`}
                               type="number"
+                              step="any"
                               value={cost.amount.toString()}
                               onChange={(e) => updateCostAmount(cost.id, Number(e.target.value))}
                               placeholder="Monto"
@@ -498,6 +552,7 @@ export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, 
                       <div className="hidden md:block">
                         <Input
                           type="number"
+                          step="any"
                           value={cost.amount.toString()}
                           onChange={(e) => updateCostAmount(cost.id, Number(e.target.value))}
                           placeholder="Monto"

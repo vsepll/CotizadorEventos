@@ -2,11 +2,8 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { PrismaClient, Prisma, QuotationStatus } from "@prisma/client"
 import { z } from "zod"
-import { findUserById } from "@/lib/activity.js"
-
-const prismaClient = new PrismaClient()
+import { findUserById } from "@/lib/activity"
 
 // Definir esquemas de validación
 const TicketVariationSchema = z.object({
@@ -202,7 +199,7 @@ export async function GET(request: Request) {
     }
 
     // Get user role
-    const user = await prismaClient.user.findUnique({
+    const user = await prisma.user.findUnique({
       where: { id: session.user.id },
       select: { role: true }
     })
@@ -275,26 +272,36 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions)
   
-  console.log('Session in API:', session)
+  if (process.env.NODE_ENV !== "production") {
+    console.log('Session in API:', session)
+  }
 
   if (!session?.user?.id) {
-    console.log('No session or user ID')
+    if (process.env.NODE_ENV !== "production") {
+      console.log('No session or user ID')
+    }
     return NextResponse.json({ error: "Unauthorized - No session" }, { status: 401 })
   }
 
   // Verificar si el usuario existe en nuestro sistema hardcodeado
   const user = findUserById(session.user.id)
   if (!user) {
-    console.log('User not found in hardcoded user list:', session.user.id)
+    if (process.env.NODE_ENV !== "production") {
+      console.log('User not found in hardcoded user list:', session.user.id)
+    }
     return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 })
   }
 
   // Verificar si el usuario tiene el rol adecuado
-  console.log('User role:', session.user.role)
+  if (process.env.NODE_ENV !== "production") {
+    console.log('User role:', session.user.role)
+  }
   
   // Permitir a usuarios con rol ADMIN o USER
   if (session.user.role !== "ADMIN" && session.user.role !== "USER") {
-    console.log('Invalid role:', session.user.role)
+    if (process.env.NODE_ENV !== "production") {
+      console.log('Invalid role:', session.user.role)
+    }
     return NextResponse.json({ 
       error: `Only authorized users can save quotations. Current role: ${session.user.role}` 
     }, { status: 401 })
@@ -302,7 +309,9 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json()
-    console.log('Raw request body:', body);
+    if (process.env.NODE_ENV !== "production") {
+      console.log('Raw request body:', body);
+    }
     
     // Verificar que tenga al menos un sector de tickets válido
     if (!body.ticketSectors || !body.ticketSectors.length) {
@@ -336,12 +345,16 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
     
-    console.log('Body before validation:', body);
+    if (process.env.NODE_ENV !== "production") {
+      console.log('Body before validation:', body);
+    }
     
     try {
       // Validate the entire input body
       const validatedInput = QuotationInputSchema.parse(body);
-      console.log('Validated input data:', validatedInput);
+      if (process.env.NODE_ENV !== "production") {
+        console.log('Validated input data:', validatedInput);
+      }
       
       const { ticketSectors, ...quotationData } = validatedInput;
 
@@ -368,7 +381,7 @@ export async function POST(request: Request) {
        }, 0);
 
       // Create quotation transaction
-      const savedQuotation = await prisma.$transaction(async (tx) => {
+      const savedQuotation = await prisma.$transaction(async (tx: any) => {
         // Create the quotation
         const newQuotation = await tx.quotation.create({
           data: {
@@ -391,7 +404,7 @@ export async function POST(request: Request) {
             userId: session.user.id,
             estimatedPaymentDate: validatedInput.estimatedPaymentDate ? new Date(validatedInput.estimatedPaymentDate) : null,
             paymentStatus: paymentStatusValue,
-            status: QuotationStatus.REVIEW, // Keep explicit REVIEW status
+            status: "REVIEW", // Keep explicit REVIEW status
             ticketSectors: {
                create: ticketSectors.map((sector) => ({ // Type inference should work here
                  name: sector.name,

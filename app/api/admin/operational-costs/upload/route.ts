@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import { PrismaClient } from "@prisma/client"
+import { prisma } from "@/lib/prisma"
 // @ts-ignore — la librería no incluye tipos completos en el entorno Next.
 import * as XLSX from "xlsx"
 
-const prisma = new PrismaClient()
+// Usar cliente Prisma compartido
 
 // Estructura esperada del Excel:
 // Hoja 1 ("OperationalCosts")

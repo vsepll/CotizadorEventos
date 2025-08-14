@@ -34,18 +34,13 @@ export default function LoginPage() {
     const password = formData.get("password") as string
 
     try {
-      console.log("Intentando iniciar sesión con:", email);
-      
       const result = await signIn("credentials", {
         email,
         password,
         redirect: false,
       })
 
-      console.log("Resultado del login:", result);
-
       if (result?.error) {
-        console.error("Error en login:", result.error);
         setErrorMsg("Credenciales inválidas. Por favor intenta de nuevo.");
         toast({
           variant: "destructive",
@@ -64,7 +59,6 @@ export default function LoginPage() {
       router.push("/dashboard")
       router.refresh()
     } catch (error) {
-      console.error("Error en proceso de login:", error);
       setErrorMsg("Ocurrió un error inesperado. Por favor intenta de nuevo.");
       toast({
         variant: "destructive",
@@ -84,7 +78,6 @@ export default function LoginPage() {
   }
   
   if (status === 'authenticated') {
-    router.push('/dashboard');
     return (
       <div className="container flex h-screen w-screen flex-col items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin" />

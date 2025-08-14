@@ -1,7 +1,5 @@
 import Redis from 'ioredis';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/prisma';
 
 const redis = new Redis({
   host: process.env.REDIS_HOST || 'localhost',

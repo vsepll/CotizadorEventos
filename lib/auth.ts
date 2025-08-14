@@ -1,6 +1,8 @@
 import { NextAuthOptions } from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials"
-import { findUserByEmail, validatePassword } from "./activity.js"
+import { findUserByEmail, validatePassword } from "./activity"
+
+const isDev = process.env.NODE_ENV !== "production"
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -12,28 +14,28 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
-          console.log("Credenciales incompletas");
+          if (isDev) console.log("Credenciales incompletas")
           return null
         }
 
-        console.log(`Buscando usuario: ${credentials.email}`);
+        if (isDev) console.log(`Buscando usuario: ${credentials.email}`)
         // Buscar usuario en la lista hardcoded
         const user = findUserByEmail(credentials.email)
 
         if (!user) {
-          console.log(`Usuario no encontrado: ${credentials.email}`);
+          if (isDev) console.log(`Usuario no encontrado: ${credentials.email}`)
           return null
         }
 
-        console.log(`Usuario encontrado: ${user.email}, verificando contraseña...`);
+        if (isDev) console.log(`Usuario encontrado: ${user.email}, verificando contraseña...`)
         const isPasswordValid = validatePassword(credentials.password, user.password)
 
         if (!isPasswordValid) {
-          console.log("Contraseña inválida");
+          if (isDev) console.log("Contraseña inválida")
           return null
         }
 
-        console.log("Autenticación exitosa");
+        if (isDev) console.log("Autenticación exitosa")
         return {
           id: user.id,
           email: user.email,
@@ -50,14 +52,14 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        console.log("JWT callback - Usuario autenticado:", user);
+        if (isDev) console.log("JWT callback - Usuario autenticado:", user)
         token.id = user.id
         token.role = user.role
       }
       return token
     },
     async session({ session, token }) {
-      console.log("Session callback - Creando sesión");
+      if (isDev) console.log("Session callback - Creando sesión")
       if (session?.user) {
         session.user.id = token.id as string
         session.user.role = token.role as string
@@ -68,5 +70,5 @@ export const authOptions: NextAuthOptions = {
   pages: {
     signIn: "/login",
   },
-  debug: true, // Siempre activar modo debug para ver todos los logs
+  debug: isDev,
 } 

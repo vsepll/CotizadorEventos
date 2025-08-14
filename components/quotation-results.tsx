@@ -21,6 +21,7 @@ interface StatCardProps {
   prefix?: string;
   suffix?: string;
   icon?: LucideIcon;
+  decimals?: number;
 }
 
 interface DetailCardItem {
@@ -208,24 +209,51 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
     },
   ], [results.totalRevenue, results.totalCosts, results.grossMargin, COLOR_PALETTE]);
 
+  // --- Financial indicators (ROI, Break-even, per-ticket metrics) ---
+  const financials = useMemo(() => {
+    const ticketQty = Number(results.ticketQuantity) || 0;
+    const totalRevenue = Number(results.totalRevenue) || 0;
+    const totalCosts = Number(results.totalCosts) || 0;
+    const grossMargin = Number(results.grossMargin ?? (totalRevenue - totalCosts)) || 0;
+    const serviceChargeTotal = Number(results.ticketingFee) || 0;
+    const additionalServicesTotal = Number(results.additionalServices) || 0;
+    const revenuePerTicket = ticketQty > 0 ? (serviceChargeTotal + additionalServicesTotal) / ticketQty : 0;
+    const costPerTicket = ticketQty > 0 ? totalCosts / ticketQty : 0;
+    const marginPerTicket = ticketQty > 0 ? grossMargin / ticketQty : 0;
+    const roiPercent = totalCosts > 0 ? (grossMargin / totalCosts) * 100 : 0;
+    const roiRatio = totalCosts > 0 ? (grossMargin / totalCosts) : 0;
+    const breakEvenTickets = revenuePerTicket > 0 ? Math.ceil(totalCosts / revenuePerTicket) : 0;
+
+    return {
+      ticketQty,
+      revenuePerTicket,
+      costPerTicket,
+      marginPerTicket,
+      roiPercent,
+      roiRatio,
+      breakEvenTickets,
+    };
+  }, [results]);
+  // --- End Financial indicators ---
+
   const getPercentageDifference = (value1: number, value2: number) => {
     if (value1 === 0) return 0
     return ((value2 - value1) / value1) * 100
   }
 
-  const StatCard = ({ title, value, trend, prefix = "$", suffix = "", icon: Icon }: StatCardProps) => (
+  const StatCard = ({ title, value, trend, prefix = "$", suffix = "", icon: Icon, decimals = 2 }: StatCardProps) => (
     <Card className="overflow-hidden transition-all hover:shadow-md">
       <CardHeader className="pb-2">
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-1">
           {Icon && <Icon className="w-4 h-4 text-muted-foreground" />}
-          <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
+          <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground whitespace-normal leading-snug break-words" title={title}>{title}</CardTitle>
         </div>
       </CardHeader>
       <CardContent>
         <div className="flex items-center justify-between">
           <div className="space-y-1">
-            <p className="text-xl font-bold">
-              {prefix}{formatNumber(value)}{suffix}
+            <p className="text-lg sm:text-xl font-bold">
+              {prefix}{formatNumber(value, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}{suffix}
             </p>
             {trend !== undefined && trend !== 0 && (
               <p className={`text-xs flex items-center ${trend > 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -838,6 +866,98 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
       </div>
 
       <div className="grid grid-cols-1 gap-6">
+        {/* Financial Indicators - New Format */}
+        <Card className="overflow-hidden transition-all hover:shadow-md">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Activity className="h-5 w-5" />
+              Análisis de Retorno sobre la Inversión (ROI)
+            </CardTitle>
+            <CardDescription>
+              Métricas avanzadas de rentabilidad y análisis financiero del evento
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* First Row - Main ROI Metrics */}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground">ROI por Ticket</p>
+                <p className="text-2xl font-bold">${formatNumber(financials.marginPerTicket, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                <p className="text-xs text-muted-foreground">Ganancia neta por ticket</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground">Múltiplo de Inversión</p>
+                <p className="text-2xl font-bold">{formatNumber(financials.roiRatio + 1, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x</p>
+                <p className="text-xs text-muted-foreground">Veces que se recupera la inversión</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground">Margen de Contribución</p>
+                <p className="text-2xl font-bold">{formatNumber(results.grossProfitability || 0, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%</p>
+                <p className="text-xs text-muted-foreground">% del margen sobre ingresos</p>
+              </div>
+            </div>
+
+            {/* Break-even */}
+            <div className="border-t pt-4">
+              <p className="text-sm text-muted-foreground mb-2">Break-even (Tickets)</p>
+              <p className="text-3xl font-bold">{Math.ceil(financials.breakEvenTickets)}</p>
+              <p className="text-xs text-muted-foreground">Tickets para cubrir costos</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Additional Financial Metrics */}
+        <Card className="overflow-hidden transition-all hover:shadow-md">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <DollarSign className="h-5 w-5" />
+              Métricas Financieras Adicionales
+            </CardTitle>
+            <CardDescription>
+              Indicadores de eficiencia y análisis por unidad
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* First Row */}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground">Margen sobre Ventas</p>
+                <p className="text-2xl font-bold">{formatNumber(results.grossProfitability || 0, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%</p>
+                <p className="text-xs text-muted-foreground">Rentabilidad sobre ventas totales</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground">Eficiencia Operativa</p>
+                <p className="text-2xl font-bold">{formatNumber((financials.roiRatio + 1), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x</p>
+                <p className="text-xs text-muted-foreground">Ingresos / Costos operativos</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground">Costo por Ticket</p>
+                <p className="text-2xl font-bold">${formatNumber(financials.costPerTicket, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                <p className="text-xs text-muted-foreground">Costo promedio por ticket</p>
+              </div>
+            </div>
+
+            {/* Second Row */}
+            <div className="grid grid-cols-3 gap-4 border-t pt-4">
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground">Revenue por Ticket</p>
+                <p className="text-2xl font-bold">${formatNumber(financials.revenuePerTicket, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                <p className="text-xs text-muted-foreground">Ingreso promedio por ticket</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground">Ratio Costos Operativos</p>
+                <p className="text-2xl font-bold">{formatNumber((operationalCostsObject.total / results.totalCosts) * 100, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%</p>
+                <p className="text-xs text-muted-foreground">% de costos operativos vs total</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground">Ratio Costos Plataforma</p>
+                <p className="text-2xl font-bold">{formatNumber(((results.palco4Cost || 0) / results.totalCosts) * 100, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%</p>
+                <p className="text-xs text-muted-foreground">% de costos de plataforma vs total</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {operationalCostsForCard.length > 0 && (
           <DetailCard 
             title="Costos Operativos" 

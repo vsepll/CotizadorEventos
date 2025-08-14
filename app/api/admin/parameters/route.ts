@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import { PrismaClient } from "@prisma/client"
+import { prisma } from "@/lib/prisma"
 import { z } from "zod"
 import { invalidateQuotationCache } from "@/lib/redis"
 
-const prisma = new PrismaClient()
+// Usar cliente Prisma compartido
 
 const ParametersSchema = z.object({
   defaultPlatformFee: z.number().min(0).max(100),
@@ -123,9 +123,9 @@ export async function PUT(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const session = await getServerSession()
+  const session = await getServerSession(authOptions)
 
-  if (!session || session.user?.role !== "admin") {
+  if (!session?.user || session.user.role !== "ADMIN") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
@@ -136,7 +136,7 @@ export async function POST(request: Request) {
     const updatedParameters = await prisma.globalParameters.upsert({
       where: { id: 1 },
       update: validatedData,
-      create: validatedData,
+      create: { id: 1, ...validatedData },
     })
 
     // Invalidar el caché de cotizaciones después de actualizar los parámetros
