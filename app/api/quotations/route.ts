@@ -76,13 +76,47 @@ const QuotationAdditionalServiceSchema = z.object({
   isPercentage: z.boolean()
 });
 
-// Modificar el esquema original para incluir additionalServiceItems
+// Modificar el esquema original para incluir additionalServiceItems y campos del frontend
 const QuotationInputSchema = z.object({
   name: z.string().optional(),
   eventType: z.string(),
   totalAmount: z.number(),
   ticketPrice: z.number(),
-  platformFee: z.number(),
+  // Agregar campos que vienen del frontend
+  platform: z.object({
+    name: z.string(),
+    percentage: z.number()
+  }).optional(),
+  paymentMethod: z.object({
+    id: z.string(),
+    name: z.string(),
+    percentage: z.number()
+  }).optional(),
+  paymentMethods: z.object({
+    credit: z.object({
+      percentage: z.number(),
+      chargedTo: z.string()
+    }),
+    debit: z.object({
+      percentage: z.number(),
+      chargedTo: z.string()
+    }),
+    cash: z.object({
+      percentage: z.number(),
+      chargedTo: z.string()
+    })
+  }).optional(),
+  credentialsCost: z.number().optional(),
+  employees: z.array(z.object({
+    employeeTypeId: z.string(),
+    quantity: z.number(),
+    days: z.number()
+  })).optional(),
+  mobilityKilometers: z.number().optional(),
+  numberOfTolls: z.number().optional(),
+  tollsCost: z.number().optional(),
+  // Campos de cálculo
+  platformFee: z.number().optional(),
   ticketingFee: z.number().optional(),
   additionalServices: z.number().optional(),
   paywayFees: z.any().optional(),
@@ -346,7 +380,9 @@ export async function POST(request: Request) {
       const { ticketSectors, ...quotationData } = validatedInput;
 
       // Use validated fields or defaults
-      const platformFee = validatedInput.platformFee ?? 0;
+      // Calculate platformFee from platform object if not provided directly
+      const platformFee = validatedInput.platformFee ?? 
+        (validatedInput.platform ? (validatedInput.totalAmount * validatedInput.ticketPrice * validatedInput.platform.percentage / 100) : 0);
       const ticketingFee = validatedInput.ticketingFee ?? 0;
       const additionalServices = validatedInput.additionalServices ?? 0;
       const additionalServiceItems = validatedInput.additionalServiceItems ?? [];
@@ -375,7 +411,7 @@ export async function POST(request: Request) {
             // Ensure name has a default value
             name: validatedInput.name || `Cotización Sin Nombre ${new Date().toLocaleDateString()}`,
             eventType: validatedInput.eventType,
-            totalAmount: ticketQuantity, 
+            totalAmount: validatedInput.totalAmount, // This should be the monetary total, not ticket quantity
             ticketPrice: validatedInput.ticketPrice,
             platformFee: platformFee,
             ticketingFee: ticketingFee,
@@ -440,6 +476,8 @@ export async function POST(request: Request) {
     }
   } catch (error) {
     console.error("Error saving quotation:", error)
+    console.error("Error details:", JSON.stringify(error, null, 2))
+    
     // Check if it's a Prisma error (potentially from the create operation)
     if (error instanceof Error && 'code' in error) {
        // Handle known Prisma errors if needed, otherwise return a generic message
