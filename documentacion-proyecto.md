@@ -34,7 +34,7 @@ La aplicación permite:
 
 ### Modelos de Datos Principales
 
-**User**: Usuarios de la aplicación
+**User**: ios de la aplicación
 - Campos: id, name, email, password, role
 - Relaciones: quotations, customOperationalCosts, employeeTypes
 

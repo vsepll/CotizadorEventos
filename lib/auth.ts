@@ -1,8 +1,6 @@
 import { NextAuthOptions } from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials"
-import { findUserByEmail, validatePassword } from "./activity"
-
-const isDev = process.env.NODE_ENV !== "production"
+import { findUserByEmail, validatePassword } from "./activity.js"
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -14,28 +12,28 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
-          if (isDev) console.log("Credenciales incompletas")
+          console.log("Credenciales incompletas");
           return null
         }
 
-        if (isDev) console.log(`Buscando usuario: ${credentials.email}`)
+        console.log(`Buscando usuario: ${credentials.email}`);
         // Buscar usuario en la lista hardcoded
         const user = findUserByEmail(credentials.email)
 
         if (!user) {
-          if (isDev) console.log(`Usuario no encontrado: ${credentials.email}`)
+          console.log(`Usuario no encontrado: ${credentials.email}`);
           return null
         }
 
-        if (isDev) console.log(`Usuario encontrado: ${user.email}, verificando contraseña...`)
+        console.log(`Usuario encontrado: ${user.email}, verificando contraseña...`);
         const isPasswordValid = validatePassword(credentials.password, user.password)
 
         if (!isPasswordValid) {
-          if (isDev) console.log("Contraseña inválida")
+          console.log("Contraseña inválida");
           return null
         }
 
-        if (isDev) console.log("Autenticación exitosa")
+        console.log("Autenticación exitosa");
         return {
           id: user.id,
           email: user.email,
@@ -47,28 +45,49 @@ export const authOptions: NextAuthOptions = {
   ],
   session: {
     strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60,
+    maxAge: 30 * 24 * 60 * 60, // 30 días
   },
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        if (isDev) console.log("JWT callback - Usuario autenticado:", user)
+        console.log("JWT callback - Usuario autenticado:", user);
         token.id = user.id
         token.role = user.role
       }
       return token
     },
     async session({ session, token }) {
-      if (isDev) console.log("Session callback - Creando sesión")
+      console.log("Session callback - Creando sesión");
       if (session?.user) {
         session.user.id = token.id as string
         session.user.role = token.role as string
       }
       return session
     },
+    async redirect({ url, baseUrl }) {
+      // Simplificar redirecciones para mejor performance
+      
+      // Para URLs relativas, usar baseUrl
+      if (url.startsWith("/")) return `${baseUrl}${url}`
+      
+      // Para URLs del mismo dominio, permitir
+      if (url.startsWith(baseUrl)) return url
+      
+      // Por defecto, ir al dashboard
+      return `${baseUrl}/dashboard`
+    },
   },
   pages: {
     signIn: "/login",
+    error: "/login", // Redirigir errores a la página de login
   },
-  debug: isDev,
+  events: {
+    async signIn({ user }) {
+      console.log("Usuario iniciando sesión:", user.email);
+    },
+    async signOut() {
+      console.log("Usuario cerrando sesión");
+    },
+  },
+  debug: false, // Desactivar en producción para mejor performance
 } 

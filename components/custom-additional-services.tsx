@@ -16,6 +16,7 @@ import {
   SelectValue 
 } from "@/components/ui/select"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { useSession } from "next-auth/react"
 
 export interface AdditionalService {
   id: string
@@ -37,6 +38,10 @@ export function CustomAdditionalServices({
 }: CustomAdditionalServicesProps) {
   const [newServiceName, setNewServiceName] = useState("")
   const [formError, setFormError] = useState("")
+  const { data: session } = useSession()
+
+  // Verificar si el usuario es administrador
+  const isAdmin = session?.user?.role === "ADMIN"
 
   const addAdditionalService = () => {
     if (!newServiceName.trim()) {
@@ -75,8 +80,10 @@ export function CustomAdditionalServices({
     onChange(updatedServices)
   }
 
-  // Calcular el total considerando si es porcentaje o monto fijo
+  // Calcular el total considerando si es porcentaje o monto fijo (solo para admins)
   const calculateTotalServices = () => {
+    if (!isAdmin) return 0;
+    
     return value.reduce((sum, service) => {
       if (service.isPercentage) {
         return sum + (totalAmount * service.amount / 100)
@@ -94,9 +101,15 @@ export function CustomAdditionalServices({
         <CardTitle className="flex items-center gap-2">
           <DollarSign className="h-5 w-5 text-primary" />
           Servicios Adicionales Personalizados
+          {!isAdmin && (
+            <Badge variant="secondary" className="ml-2">Solo Configuración</Badge>
+          )}
         </CardTitle>
         <CardDescription>
-          Agregue servicios adicionales específicos para este evento
+          {isAdmin 
+            ? "Agregue servicios adicionales específicos para este evento"
+            : "Configure los conceptos y tipos de servicios adicionales (los montos son gestionados por administradores)"
+          }
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -138,6 +151,11 @@ export function CustomAdditionalServices({
                 >
                   <div className="flex-1">
                     <p className="font-medium">{service.name}</p>
+                    {!isAdmin && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Tipo: {service.isPercentage ? "Porcentaje" : "Monto Fijo"}
+                      </p>
+                    )}
                   </div>
                   <div className="w-20">
                     <TooltipProvider delayDuration={100}>
@@ -162,16 +180,17 @@ export function CustomAdditionalServices({
                       </Tooltip>
                     </TooltipProvider>
                   </div>
-                  <div className="w-32">
-                    <Input
-                      type="number"
-                      value={service.amount || ''}
-                      onChange={(e) => updateServiceAmount(service.id, Number(e.target.value) || 0)}
-                      placeholder="Monto"
-                      className="text-right"
-                      step="any"
-                    />
-                  </div>
+                  {isAdmin && (
+                    <div className="w-32">
+                      <Input
+                        type="number"
+                        value={service.amount.toString()}
+                        onChange={(e) => updateServiceAmount(service.id, Number(e.target.value))}
+                        placeholder="Monto"
+                        className="text-right"
+                      />
+                    </div>
+                  )}
                   <Button
                     onClick={() => removeService(service.id)}
                     variant="ghost"
@@ -193,7 +212,7 @@ export function CustomAdditionalServices({
           )}
         </div>
       </CardContent>
-      {value.length > 0 && (
+      {value.length > 0 && isAdmin && (
         <CardFooter className="border-t pt-4 flex justify-between">
           <span className="font-semibold">Total Servicios Adicionales:</span>
           <Badge variant="secondary" className="text-lg px-3 py-1 h-auto">

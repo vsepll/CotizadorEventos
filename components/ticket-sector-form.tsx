@@ -63,8 +63,12 @@ interface TicketSectorFormProps {
 }
 
 export function TicketSectorForm({ initialSectors, onChange }: TicketSectorFormProps) {
-  const [sectors, setSectors] = React.useState<TicketSector[]>(
-    initialSectors || [{
+  const [sectors, setSectors] = React.useState<TicketSector[]>(() => {
+    // Inicialización inteligente basada en si hay datos iniciales
+    if (initialSectors && initialSectors.length > 0) {
+      return initialSectors;
+    }
+    return [{
       name: '',
       variations: [{ 
         name: '', 
@@ -73,8 +77,16 @@ export function TicketSectorForm({ initialSectors, onChange }: TicketSectorFormP
         serviceCharge: 0,
         serviceChargeType: "fixed"
       }]
-    }]
-  );
+    }];
+  });
+
+  // Actualizar sectores cuando cambien los initialSectors (solo para edición)
+  React.useEffect(() => {
+    if (initialSectors && initialSectors.length > 0) {
+      // Solo actualizar si hay datos reales (caso de edición)
+      setSectors(initialSectors);
+    }
+  }, [initialSectors]);
   
   const [isAddVariationDialogOpen, setIsAddVariationDialogOpen] = React.useState(false);
   const [currentSectorIndex, setCurrentSectorIndex] = React.useState<number | null>(null);
@@ -86,133 +98,46 @@ export function TicketSectorForm({ initialSectors, onChange }: TicketSectorFormP
     serviceChargeType: "fixed"
   });
 
-  const [validationErrors, setValidationErrors] = React.useState<{
-    sectors: {
-      nameError: boolean;
-      variationsError: boolean;
-      index: number;
-    }[];
-    variations: {
-      nameError: boolean;
-      priceError: boolean;
-      quantityError: boolean;
-      sectorIndex: number;
-      variationIndex: number;
-    }[];
-  }>({
-    sectors: [],
-    variations: [],
-  });
 
-  // Validar los sectores y variaciones
-  const validateSectors = () => {
-    const sectorErrors: { nameError: boolean; variationsError: boolean; index: number }[] = [];
-    const variationErrors: { 
-      nameError: boolean; 
-      priceError: boolean; 
-      quantityError: boolean; 
-      sectorIndex: number; 
-      variationIndex: number 
-    }[] = [];
 
-    sectors.forEach((sector, sectorIndex) => {
-      // Validar el nombre del sector
-      if (!sector.name.trim()) {
-        sectorErrors.push({
-          nameError: true,
-          variationsError: false,
-          index: sectorIndex
-        });
-      }
-
-      // Validar que haya al menos una variación válida
-      let hasValidVariation = false;
-      
-      sector.variations.forEach((variation, variationIndex) => {
-        const nameError = !variation.name.trim();
-        const priceError = variation.price <= 0;
-        const quantityError = variation.quantity <= 0;
-        
-        if (!nameError && !priceError && !quantityError) {
-          hasValidVariation = true;
-        }
-        
-        if (nameError || priceError || quantityError) {
-          variationErrors.push({
-            nameError,
-            priceError,
-            quantityError,
-            sectorIndex,
-            variationIndex
-          });
-        }
-      });
-      
-      if (!hasValidVariation && sector.variations.length > 0) {
-        sectorErrors.push({
-          nameError: false,
-          variationsError: true,
-          index: sectorIndex
-        });
-      }
-    });
-
-    // Compara si los errores han cambiado antes de actualizar el estado
-    const isEqual = (a: any[], b: any[]): boolean => {
-      if (a.length !== b.length) return false;
-      return JSON.stringify(a) === JSON.stringify(b);
-    };
-
-    if (!isEqual(sectorErrors, validationErrors.sectors) || 
-        !isEqual(variationErrors, validationErrors.variations)) {
-      setValidationErrors({
-        sectors: sectorErrors,
-        variations: variationErrors
-      });
-    }
-
-    // Retornar true si no hay errores
-    return sectorErrors.length === 0 && variationErrors.length === 0;
+  // Funciones de validación simplificadas (sin actualización de estado automática)
+  const hasSectorNameError = (sectorIndex: number) => {
+    const sector = sectors[sectorIndex];
+    return !sector || !sector.name.trim();
   };
 
-  // Memoizar los sectores para evitar renderizaciones innecesarias
-  const memoizedSectors = JSON.stringify(sectors);
+  const hasSectorVariationsError = (sectorIndex: number) => {
+    const sector = sectors[sectorIndex];
+    if (!sector || !sector.variations || sector.variations.length === 0) return true;
+    
+    return !sector.variations.some(variation => 
+      variation.name.trim() && variation.price > 0 && variation.quantity > 0
+    );
+  };
+
+  const hasVariationError = (sectorIndex: number, variationIndex: number, field: 'name' | 'price' | 'quantity') => {
+    const sector = sectors[sectorIndex];
+    if (!sector || !sector.variations || !sector.variations[variationIndex]) return false;
+    
+    const variation = sector.variations[variationIndex];
+    switch (field) {
+      case 'name':
+        return !variation.name.trim();
+      case 'price':
+        return variation.price <= 0;
+      case 'quantity':
+        return variation.quantity <= 0;
+      default:
+        return false;
+    }
+  };
 
   // Enviar cambios al componente padre cuando cambian los sectores
-  useEffect(() => {
+  React.useEffect(() => {
     if (onChange) {
       onChange(sectors);
     }
-  }, [memoizedSectors, onChange]);
-  
-  // Validar sectores solo cuando cambien los sectores (usando la versión memoizada)
-  useEffect(() => {
-    validateSectors();
-  }, [memoizedSectors]);
-
-  // Verificar si un sector tiene error de nombre
-  const hasSectorNameError = (sectorIndex: number) => {
-    return validationErrors.sectors.some(
-      error => error.index === sectorIndex && error.nameError
-    );
-  };
-
-  // Verificar si un sector tiene error de variaciones
-  const hasSectorVariationsError = (sectorIndex: number) => {
-    return validationErrors.sectors.some(
-      error => error.index === sectorIndex && error.variationsError
-    );
-  };
-
-  // Verificar si una variación tiene errores
-  const hasVariationError = (sectorIndex: number, variationIndex: number, field: 'name' | 'price' | 'quantity') => {
-    return validationErrors.variations.some(
-      error => 
-        error.sectorIndex === sectorIndex && 
-        error.variationIndex === variationIndex &&
-        error[`${field}Error`]
-    );
-  };
+  }, [sectors]); // Solo depender de sectors, no de onChange
 
   const addSector = () => {
     setSectors([...sectors, {

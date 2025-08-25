@@ -15,14 +15,34 @@ export default function LoginPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const router = useRouter()
   const { toast } = useToast()
-  const { status } = useSession()
+  const { data: session, status } = useSession()
   
   // Redireccionar automáticamente si ya está autenticado
   useEffect(() => {
-    if (status === 'authenticated') {
-      router.push('/dashboard')
+    if (status === 'authenticated' && session) {
+      console.log("Sesión autenticada detectada, redirigiendo...");
+      setLoading(false) // Resetear loading antes de redirigir
+      router.replace('/dashboard')
+    } else if (status === 'unauthenticated' && loading) {
+      // Si el status es unauthenticated pero estamos en loading, 
+      // significa que el login falló de alguna manera
+      console.log("Login parece haber fallado, reseteando loading");
+      setLoading(false)
     }
-  }, [status, router])
+  }, [status, session, router, loading])
+
+  // Timeout de seguridad para resetear loading si algo falla
+  useEffect(() => {
+    if (loading) {
+      const timeout = setTimeout(() => {
+        console.log("Timeout alcanzado, reseteando loading");
+        setLoading(false)
+        setErrorMsg("La operación tomó demasiado tiempo. Por favor intenta de nuevo.");
+      }, 10000) // 10 segundos de timeout
+
+      return () => clearTimeout(timeout)
+    }
+  }, [loading])
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -51,13 +71,22 @@ export default function LoginPage() {
         return
       }
 
-      // Redirección exitosa
-      toast({
-        title: "Inicio de sesión exitoso",
-        description: "¡Bienvenido de nuevo!",
-      })
-      router.push("/dashboard")
-      router.refresh()
+      if (result?.ok) {
+        // Login exitoso - mostrar mensaje de éxito
+        toast({
+          title: "Inicio de sesión exitoso",
+          description: "¡Bienvenido de nuevo!",
+        })
+        
+        // La redirección será manejada por el useEffect cuando la sesión se actualice
+        // No resetear loading aquí para mostrar el estado de transición
+        console.log("Login exitoso, esperando actualización de sesión...")
+      } else {
+        // Caso donde no hay error pero tampoco está ok
+        console.log("Resultado de login inesperado:", result);
+        setErrorMsg("Error inesperado. Por favor intenta de nuevo.");
+        setLoading(false)
+      }
     } catch (error) {
       setErrorMsg("Ocurrió un error inesperado. Por favor intenta de nuevo.");
       toast({
@@ -69,6 +98,7 @@ export default function LoginPage() {
     }
   }
 
+  // Mostrar loading mientras verifica la sesión
   if (status === 'loading') {
     return (
       <div className="container flex h-screen w-screen flex-col items-center justify-center">
@@ -77,11 +107,12 @@ export default function LoginPage() {
     )
   }
   
+  // Si ya está autenticado, mostrar mensaje de redirección
   if (status === 'authenticated') {
     return (
       <div className="container flex h-screen w-screen flex-col items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin" />
-        <p className="mt-4 text-muted-foreground">Redireccionando...</p>
+        <p className="mt-4 text-muted-foreground">Redireccionando al dashboard...</p>
       </div>
     )
   }
@@ -111,6 +142,7 @@ export default function LoginPage() {
                   placeholder="nombre@ejemplo.com"
                   required
                   className="pl-9"
+                  disabled={loading}
                 />
               </div>
             </div>
@@ -124,6 +156,7 @@ export default function LoginPage() {
                   type="password"
                   required
                   className="pl-9"
+                  disabled={loading}
                 />
               </div>
             </div>
@@ -135,7 +168,7 @@ export default function LoginPage() {
 
           <Button className="w-full" type="submit" disabled={loading}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Iniciar sesión
+            {loading ? "Iniciando sesión..." : "Iniciar sesión"}
           </Button>
         </form>
       </Card>

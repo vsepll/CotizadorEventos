@@ -127,21 +127,49 @@ export function QuotationDetails({ id }: QuotationDetailsProps) {
   }
 
   const handleExportPDF = async () => {
-    if (!quotation) return
+    if (!quotation) {
+      toast({
+        title: "Error",
+        description: "No hay cotización disponible para exportar.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    console.log('🚀 Iniciando exportación PDF para cotización:', quotation.id);
+    console.log('📄 Datos de cotización:', quotation);
 
     setIsExporting(true)
     try {
       const doc = generateQuotationPDF(quotation)
-      doc.save(`cotizacion-${quotation.name.toLowerCase().replace(/\s+/g, '-')}.pdf`)
+      const fileName = `cotizacion-${quotation.name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}.pdf`
+      console.log('💾 Guardando PDF como:', fileName);
+      doc.save(fileName)
+      
       toast({
-        title: "Éxito",
+        title: "✅ Éxito",
         description: "PDF exportado correctamente",
       })
+      console.log('✅ PDF exportado exitosamente');
     } catch (error) {
-      console.error("Error al exportar PDF:", error)
+      console.error("❌ Error al exportar PDF:", error)
+      console.error("📊 Datos que causaron el error:", {
+        quotation,
+        hasPaywayFees: !!quotation.paywayFees,
+        hasOperationalCosts: !!quotation.operationalCosts,
+        paywayFeesType: typeof quotation.paywayFees,
+        operationalCostsType: typeof quotation.operationalCosts
+      })
+      
+      let errorMessage = "Error al exportar el PDF. Por favor, intente nuevamente."
+      
+      if (error instanceof Error) {
+        errorMessage = `Error específico: ${error.message}`
+      }
+      
       toast({
-        title: "Error",
-        description: "Error al exportar el PDF. Por favor, intente nuevamente.",
+        title: "❌ Error",
+        description: errorMessage,
         variant: "destructive",
       })
     } finally {
@@ -248,11 +276,7 @@ export function QuotationDetails({ id }: QuotationDetailsProps) {
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="flex items-center space-x-4">
-          <Button variant="outline" onClick={() => router.push('/dashboard')} className="flex items-center space-x-2">
-            <ArrowLeft className="h-4 w-4" />
-            <span>Volver al Dashboard</span>
-          </Button>
+        <div>
           <div className="space-y-1">
             <h2 className="text-3xl font-bold tracking-tight">{quotation.name}</h2>
             <div className="flex flex-wrap gap-4 text-muted-foreground">

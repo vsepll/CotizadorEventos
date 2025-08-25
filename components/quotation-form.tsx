@@ -3,12 +3,12 @@
 import type React from "react"
 import type { QuotationResults } from "@/lib/calculations"
 
-import { useState, useEffect, useRef, useMemo, useCallback } from "react"
+import { useState, useEffect, useRef, useMemo, useCallback, memo } from "react"
+import dynamic from 'next/dynamic'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { QuotationResults as QuotationResultsComponent } from "@/components/quotation-results"
 import { useToast } from "@/components/ui/use-toast"
 import {
   Dialog,
@@ -44,15 +44,41 @@ import { Loader2 } from "lucide-react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { CustomOperationalCosts } from "@/components/custom-operational-costs"
-import { TicketSectorForm } from "@/components/ticket-sector-form"
 import { DatePicker } from "@/components/ui/date-picker"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
-import { CustomAdditionalServices, AdditionalService } from "@/components/custom-additional-services"
+
+// OPTIMIZACIÓN: Lazy loading de componentes pesados
+const QuotationResults = dynamic(() => import("@/components/quotation-results").then(mod => ({ default: mod.QuotationResults })), {
+  loading: () => <Skeleton className="h-96 w-full" />,
+  ssr: false
+})
+
+const CustomOperationalCosts = dynamic(() => import("@/components/custom-operational-costs").then(mod => ({ default: mod.CustomOperationalCosts })), {
+  loading: () => <Skeleton className="h-64 w-full" />,
+  ssr: false
+})
+
+const TicketSectorForm = dynamic(() => import("@/components/ticket-sector-form").then(mod => ({ default: mod.TicketSectorForm })), {
+  loading: () => <Skeleton className="h-64 w-full" />,
+  ssr: false
+})
+
+const CustomAdditionalServices = dynamic(() => import("@/components/custom-additional-services").then(mod => ({ default: mod.CustomAdditionalServices })), {
+  loading: () => <Skeleton className="h-32 w-full" />,
+  ssr: false
+})
+
+// OPTIMIZACIÓN: Importar tipos necesarios
+interface AdditionalService {
+  id: string;
+  name: string;
+  amount: number;
+  isPercentage: boolean;
+}
 
 interface TooltipLabelProps {
   htmlFor: string;
@@ -152,104 +178,54 @@ export function QuotationForm() {
   const { toast } = useToast()
   const router = useRouter()
   
-  // Manejar el estado de la pestaña activa
-  const [activeTab, setActiveTab] = useState(() => {
-    // Recuperar la pestaña activa de localStorage si existe
-    const savedTab = localStorage.getItem('quotationActiveTab')
-    return savedTab || "event"
-  })
+  // OPTIMIZACIÓN: Siempre empezar con pestaña inicial
+  const [activeTab, setActiveTab] = useState("event")
 
-  // Manejar el estado del formulario con valores guardados o iniciales
-  const [formData, setFormData] = useState<FormData>(() => {
-    try {
-      const savedData = localStorage.getItem('quotationFormData')
-      if (savedData) {
-        const parsedData = JSON.parse(savedData)
-        return {
-          ...parsedData,
-          platform: {
-            name: parsedData.platform?.name || "TICKET_PLUS",
-            percentage: parsedData.platform?.percentage || "0"
-          },
-          // Inicializar el nuevo campo paymentMethod
-          paymentMethod: parsedData.paymentMethod || {
-            id: "",
-            name: "",
-            percentage: 0
-          },
-          paymentMethods: {
-            credit: {
-              percentage: parsedData.paymentMethods?.credit?.percentage || "",
-              chargedTo: parsedData.paymentMethods?.credit?.chargedTo || "CONSUMER"
-            },
-            debit: {
-              percentage: parsedData.paymentMethods?.debit?.percentage || "",
-              chargedTo: parsedData.paymentMethods?.debit?.chargedTo || "CONSUMER"
-            },
-            cash: {
-              percentage: parsedData.paymentMethods?.cash?.percentage || "",
-              chargedTo: parsedData.paymentMethods?.cash?.chargedTo || "CONSUMER"
-            }
-          },
-          employees: parsedData.employees || [],
-          mobilityKilometers: parsedData.mobilityKilometers || "",
-          numberOfTolls: parsedData.numberOfTolls || "",
-          tollsCost: parsedData.tollsCost || "",
-          ticketSectors: parsedData.ticketSectors || [],
-          estimatedPaymentDate: parsedData.estimatedPaymentDate || null,
-          paymentStatus: parsedData.paymentStatus || "PENDING",
-          additionalServiceItems: parsedData.additionalServiceItems || []
-        }
+  // OPTIMIZACIÓN: Siempre empezar con valores por defecto limpios
+  const [formData, setFormData] = useState<FormData>({
+    eventType: "",
+    totalAmount: "",
+    ticketPrice: "",
+    platform: {
+      name: "TICKET_PLUS",
+      percentage: "0"
+    },
+    additionalServiceItems: [],
+    paymentMethod: {
+      id: "",
+      name: "",
+      percentage: 0
+    },
+    paymentMethods: {
+      credit: {
+        percentage: "",
+        chargedTo: "CONSUMER"
+      },
+      debit: {
+        percentage: "",
+        chargedTo: "CONSUMER"
+      },
+      cash: {
+        percentage: "",
+        chargedTo: "CONSUMER"
       }
-    } catch (error) {
-      console.error('Error loading saved form data:', error)
-    }
-    
-    return {
-      eventType: "",
-      totalAmount: "",
-      ticketPrice: "",
-      platform: {
-        name: "TICKET_PLUS",
-        percentage: "0"
-      },
-      additionalServiceItems: [],
-      paymentMethod: {
-        id: "",
-        name: "",
-        percentage: 0
-      },
-      paymentMethods: {
-        credit: {
-          percentage: "",
-          chargedTo: "CONSUMER"
-        },
-        debit: {
-          percentage: "",
-          chargedTo: "CONSUMER"
-        },
-        cash: {
-          percentage: "",
-          chargedTo: "CONSUMER"
-        }
-      },
-      credentialsCost: "",
-      employees: [],
-      mobilityKilometers: "",
-      numberOfTolls: "",
-      tollsCost: "",
-      customOperationalCosts: [],
-      ticketSectors: [],
-      estimatedPaymentDate: null,
-      paymentStatus: "PENDING"
-    }
+    },
+    credentialsCost: "",
+    employees: [],
+    mobilityKilometers: "",
+    numberOfTolls: "",
+    tollsCost: "",
+    customOperationalCosts: [],
+    ticketSectors: [],
+    estimatedPaymentDate: null,
+    paymentStatus: "PENDING"
   })
 
   const [results, setResults] = useState<QuotationResults | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [quotationName, setQuotationName] = useState("")
-  // const [employeeTypes, setEmployeeTypes] = useState<EmployeeType[]>([])
+  const [employeeTypes, setEmployeeTypes] = useState<EmployeeType[]>([])
   const [ticketSectors, setTicketSectors] = useState([])
   // Add a state to control the save modal visibility
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false)
@@ -258,166 +234,83 @@ export function QuotationForm() {
   // Añadir estado para métodos de pago
   const [paymentMethodTypes, setPaymentMethodTypes] = useState<PaymentMethodType[]>([])
 
-  // Guardar la pestaña activa en localStorage cuando cambia
-  useEffect(() => {
-    localStorage.setItem('quotationActiveTab', activeTab)
-  }, [activeTab])
-
-  // Guardar datos del formulario en localStorage cuando cambian
-  // Use a ref to store the previous form data to avoid unnecessary updates
+  // OPTIMIZACIÓN: Eliminar persistencia automática para evitar confusión
+  // Ya no guardamos automáticamente en localStorage
   const prevFormDataRef = useRef<string | null>(null);
-  
-  useEffect(() => {
-    try {
-      // Using setTimeout to defer the localStorage update after render
-      // This helps avoid blocking the main thread during updates
-      const timeoutId = setTimeout(() => {
-      const formDataString = JSON.stringify(formData);
-      
-      // Only update localStorage if the data has actually changed
-      if (formDataString !== prevFormDataRef.current) {
-        localStorage.setItem('quotationFormData', formDataString);
-        prevFormDataRef.current = formDataString;
-      }
-      }, 300); // Small debounce delay to batch multiple rapid updates
 
-      // Cleanup timeout on unmount or before next effect run
-      return () => clearTimeout(timeoutId);
-    } catch (error) {
-      console.error('Error saving form data to localStorage:', error)
-    }
-  }, [formData]);
-
-    // Cargar parámetros globales solo si no hay datos guardados
+    // OPTIMIZACIÓN: Cargar parámetros globales por defecto al inicializar
     useEffect(() => {
       const fetchGlobalParameters = async () => {
         try {
-          // Utilizamos el endpoint que expone todos los parámetros globales (incluidos los cargados vía Excel)
           const response = await fetch('/api/admin/parameters');
           if (!response.ok) {
             throw new Error('Failed to fetch global parameters');
           }
           const data = await response.json();
           
-          console.log('Fetched global parameters:', data);
-          
-          // Verificar si hay costos operativos personalizados para aplicar
-          const hasCustomCosts = Array.isArray(data.customOperationalCosts) && data.customOperationalCosts.length > 0;
-          const hasAdditionalServices = Array.isArray(data.customAdditionalServices) && data.customAdditionalServices.length > 0;
-          
-          // Siempre aplicar los costos operativos y servicios adicionales si existen
-          if (hasCustomCosts || hasAdditionalServices) {
-            setFormData(prevState => ({
-              ...prevState,
-              // Mezclar costos operativos personalizados globales con los que ya existan (evita duplicados por nombre)
-              customOperationalCosts: (() => {
-                if (!Array.isArray(data.customOperationalCosts)) return prevState.customOperationalCosts;
-
-                // Normalizar nombres para comparación sin acentos / mayúsculas
-                const normalize = (s: string) => s.trim().toLowerCase();
-
-                const existing = prevState.customOperationalCosts;
-                const extras = data.customOperationalCosts
-                  .filter((gc: any) => !existing.some(ec => normalize(ec.name) === normalize(gc.name)))
-                  .map((cost: any, idx: number) => ({
-                    id: `op-auto-${idx}-${cost.name}`,
-                    name: cost.name,
-                    amount: 0,
-                    calculationType: ((): any => {
-                      // Si calculationType es inválido o ausente, deducir heurísticamente
-                      const ct = (cost.calculationType || "").toString().toLowerCase();
-
-                      if (["fixed", "$ fijo", "fijo"].includes(ct)) return "fixed";
-                      if (["percentage", "%", "% sobre venta", "porcentaje"].includes(ct)) return "percentage";
-                      if (["per_day", "$/día", "$/dia", "por día", "dia"].includes(ct)) return "per_day";
-                      if ([
-                        "per_day_per_person",
-                        "$/día x persona",
-                        "$/dia x persona",
-                        "dia x persona",
-                        "día x persona",
-                        "dia por persona",
-                        "día por persona"
-                      ].includes(ct)) return "per_day_per_person";
-                      if ([
-                        "per_ticket_system",
-                        "$/ticket (sistema)",
-                        "$/ticket sistema",
-                        "ticket sistema",
-                        "ticket x sistema",
-                        "ticket por sistema",
-                        "tickets sistema",
-                        "tickets x sistema"
-                      ].includes(ct)) return "per_ticket_system";
-                      if (["per_ticket_sector", "$/ticket x sector", "$/ticket sector"].includes(ct)) return "per_ticket_sector";
-
-                      // Heurísticas basadas en el nombre
-                      const normalizedName = String(cost.name).toLowerCase();
-                      if (/alquiler.*celular/.test(normalizedName) || /vi[aá]ticos/.test(normalizedName) || /hoteler[íi]a/.test(normalizedName)) {
-                        return "per_day_per_person";
-                      }
-                      if (/facturante/.test(normalizedName) || (/costo de sistema/.test(normalizedName) && /deporte/.test(normalizedName))) {
-                        return "per_ticket_system";
-                      }
-
-                      return "fixed";
-                    })(),
-                    days: cost.defaultDays ?? undefined,
-                    persons: cost.defaultPersons ?? undefined,
-                    sectors: cost.defaultSectors ?? undefined
-                  }));
-                return [...existing, ...extras];
-              })(),
-              // Aplicar servicios adicionales si están vacíos
-              additionalServiceItems: prevState.additionalServiceItems.length === 0 && Array.isArray(data.customAdditionalServices)
-                ? data.customAdditionalServices.map((service: any, idx: number) => ({
-                    id: `srv-${idx}-${service.name}`,
-                    name: service.name,
-                    amount: 0,
-                    isPercentage: Boolean(service.isPercentage)
-                  }))
-                : prevState.additionalServiceItems
-            }));
+          // OPTIMIZACIÓN: Solo log en desarrollo
+          if (process.env.NODE_ENV === 'development') {
+            console.log('Fetched global parameters:', data);
           }
           
-          // Para el resto de parámetros, solo aplicar si el formulario está "vacío"
-          if (!formData.eventType && !formData.platform.percentage) {
-            console.log('Applying default global parameters:', data);
-            
-            // Solo establecemos los parámetros si el formulario está "vacío"
-            setFormData(prevState => ({
-              ...prevState,
-              platform: {
-                ...prevState.platform,
-                percentage: data.defaultPlatformFee.toString()
+          // Siempre aplicar parámetros por defecto
+          setFormData(prevState => ({
+            ...prevState,
+            platform: {
+              ...prevState.platform,
+              percentage: data.defaultPlatformFee.toString()
+            },
+            paymentMethods: {
+              credit: {
+                percentage: data.defaultCreditCardFee.toString(),
+                chargedTo: "CONSUMER"
               },
-              paymentMethods: {
-                credit: {
-                  percentage: data.defaultCreditCardFee.toString(),
-                  chargedTo: "CONSUMER"
-                },
-                debit: {
-                  percentage: data.defaultDebitCardFee.toString(),
-                  chargedTo: "CONSUMER"
-                },
-                cash: {
-                  percentage: data.defaultCashFee.toString(),
-                  chargedTo: "CONSUMER"
-                }
+              debit: {
+                percentage: data.defaultDebitCardFee.toString(),
+                chargedTo: "CONSUMER"
               },
-              // Si hay un sector de tickets, actualizamos sus valores por defecto de serviceCharge
-              ticketSectors: prevState.ticketSectors.length > 0 ? 
-                prevState.ticketSectors.map(sector => ({
-                  ...sector,
-                  variations: sector.variations.map(variation => ({
-                    ...variation,
-                    serviceCharge: variation.serviceCharge || data.defaultTicketingFee,
-                    serviceChargeType: variation.serviceChargeType || "percentage"
-                  }))
-                })) : 
-                prevState.ticketSectors
-            }));
-          }
+              cash: {
+                percentage: data.defaultCashFee.toString(),
+                chargedTo: "CONSUMER"
+              }
+            },
+            // Aplicar costos operativos personalizados si existen
+            customOperationalCosts: Array.isArray(data.customOperationalCosts) 
+              ? data.customOperationalCosts.map((cost: any, idx: number) => ({
+                  id: `op-auto-${idx}-${cost.name}`,
+                  name: cost.name,
+                  amount: Number(cost.amount ?? cost.baseAmount) || 0,
+                  calculationType: ((): any => {
+                    const ct = (cost.calculationType || "").toString().toLowerCase();
+                    if (["fixed", "$ fijo", "fijo"].includes(ct)) return "fixed";
+                    if (["percentage", "%", "% sobre venta", "porcentaje"].includes(ct)) return "percentage";
+                    if (["per_day", "$/día", "$/dia", "por día", "dia"].includes(ct)) return "per_day";
+                    if ([
+                      "per_day_per_person",
+                      "$/día x persona",
+                      "$/dia x persona",
+                      "dia x persona",
+                      "día x persona"
+                    ].includes(ct)) return "per_day_per_person";
+                    if (["per_ticket_system", "$/ticket (sistema)", "$/ticket sistema"].includes(ct)) return "per_ticket_system";
+                    if (["per_ticket_sector", "$/ticket x sector"].includes(ct)) return "per_ticket_sector";
+                    return "fixed";
+                  })(),
+                  days: cost.defaultDays ?? undefined,
+                  persons: cost.defaultPersons ?? undefined,
+                  sectors: cost.defaultSectors ?? undefined
+                }))
+              : [],
+            // Aplicar servicios adicionales si existen
+            additionalServiceItems: Array.isArray(data.customAdditionalServices)
+              ? data.customAdditionalServices.map((service: any, idx: number) => ({
+                  id: `srv-${idx}-${service.name}`,
+                  name: service.name,
+                  amount: 0,
+                  isPercentage: Boolean(service.isPercentage)
+                }))
+              : []
+          }));
         } catch (error) {
           console.error('Error fetching global parameters:', error);
         }
@@ -426,7 +319,32 @@ export function QuotationForm() {
       fetchGlobalParameters()
     }, [toast])
 
-  // Employees module removed (no need to load employee types)
+  // Agregar el efecto para cargar los tipos de empleados
+  useEffect(() => {
+    const fetchEmployeeTypes = async () => {
+      try {
+        const response = await fetch("/api/employee-types");
+        if (!response.ok) {
+          throw new Error("Failed to fetch employee types");
+        }
+        const data = await response.json();
+        // OPTIMIZACIÓN: Solo log en desarrollo
+        if (process.env.NODE_ENV === 'development') {
+          console.log("Tipos de empleados cargados:", data);
+        }
+        setEmployeeTypes(data);
+      } catch (error) {
+        console.error("Error fetching employee types:", error);
+        toast({
+          title: "Error",
+          description: "No se pudieron cargar los tipos de personal. Por favor, intente de nuevo.",
+          variant: "destructive",
+        });
+      }
+    };
+
+    fetchEmployeeTypes();
+  }, [toast]);
 
   // Agregar el efecto para cargar los tipos de métodos de pago
   useEffect(() => {
@@ -440,7 +358,10 @@ export function QuotationForm() {
         
         // Verificar si existen métodos de pago en los parámetros globales
         if (data.paymentMethods && Array.isArray(data.paymentMethods)) {
-          console.log("Métodos de pago cargados:", data.paymentMethods);
+          // OPTIMIZACIÓN: Solo log en desarrollo
+          if (process.env.NODE_ENV === 'development') {
+            console.log("Métodos de pago cargados:", data.paymentMethods);
+          }
           setPaymentMethodTypes(data.paymentMethods);
         } else {
           // Si no existen en los parámetros, usar opciones predefinidas
@@ -510,10 +431,8 @@ export function QuotationForm() {
     fetchPaymentMethods();
   }, []);
 
-  // Función mejorada para limpiar datos
+  // OPTIMIZACIÓN: Función simplificada para limpiar datos
   const clearFormData = () => {
-    localStorage.removeItem('quotationFormData');
-    localStorage.removeItem('quotationActiveTab');
     setActiveTab("event");
     setFormData({
       eventType: "",
@@ -555,6 +474,9 @@ export function QuotationForm() {
     });
     setResults(null);
     setIsClearModalOpen(false);
+    
+    // Recargar parámetros globales después de limpiar
+    window.location.reload();
   }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -657,12 +579,12 @@ export function QuotationForm() {
     });
   }
 
-  const handleCustomOperationalCostsDataChange = useCallback((costs: Array<{ id: string, name: string, amount: number, calculationType: "fixed" | "percentage" | "per_day" | "per_day_per_person" | "per_ticket_system" | "per_ticket_sector", days?: number, persons?: number, sectors?: string[] }>) => {
+  const handleCustomOperationalCostsDataChange = (costs: Array<{ id: string, name: string, amount: number, calculationType: "fixed" | "percentage" | "per_day" | "per_day_per_person" | "per_ticket_system" | "per_ticket_sector", days?: number, persons?: number, sectors?: string[] }>) => {
     setFormData(prev => ({
       ...prev,
       customOperationalCosts: costs
     }))
-  }, [])
+  }
 
   const handleTicketSectorsDataChange = (newTicketSectors: Array<{
     name: string;
@@ -683,27 +605,12 @@ export function QuotationForm() {
     }
   }
 
-  const handleAdditionalServicesDataChange = useCallback((services: AdditionalService[]) => {
+  const handleAdditionalServicesDataChange = (services: AdditionalService[]) => {
     setFormData(prev => ({
       ...prev,
       additionalServiceItems: services
     }));
-  }, []);
-
-  // Memoize total value and quantity derived from ticket sectors
-  const ticketSectorsTotals = useMemo(() => {
-    let totalValue = 0;
-    let totalQuantity = 0;
-    if (formData.ticketSectors && formData.ticketSectors.length > 0) {
-      formData.ticketSectors.forEach(sector => {
-        sector.variations.forEach(variation => {
-          totalValue += variation.price * variation.quantity;
-          totalQuantity += variation.quantity;
-        });
-      });
-    }
-    return { totalValue, totalQuantity };
-  }, [formData.ticketSectors]);
+  };
 
   // Añadir una función para adaptar los resultados al formato esperado por QuotationResults
   const adaptResults = (apiResults: any) => {
@@ -793,6 +700,11 @@ export function QuotationForm() {
         paymentMethods: paymentMethodsData,
         // Los demás campos también se acceden desde formData
         credentialsCost: Number(formData.credentialsCost),
+        employees: formData.employees.map(emp => ({
+          ...emp,
+          quantity: Number(emp.quantity),
+          days: Number(emp.days)
+        })),
         mobilityKilometers: Number(formData.mobilityKilometers),
         numberOfTolls: Number(formData.numberOfTolls),
         tollsCost: Number(formData.tollsCost),
@@ -804,7 +716,10 @@ export function QuotationForm() {
         additionalServiceItems: formData.additionalServiceItems 
       }
 
-      console.log('Sending quotation data for calculation:', quotationData)
+      // OPTIMIZACIÓN: Solo log en desarrollo
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Sending quotation data for calculation:', quotationData)
+      }
 
       // Primero calculamos la cotización en lugar de guardarla directamente
       const response = await fetch("/api/calculate-quotation", {
@@ -824,7 +739,10 @@ export function QuotationForm() {
 
       // Obtener los resultados calculados
       const responseData = await response.json()
-      console.log('Resultados recibidos de la API para visualizar:', responseData)
+      // OPTIMIZACIÓN: Solo log en desarrollo
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Resultados recibidos de la API para visualizar:', responseData)
+      }
       setResults(responseData)
       
       toast({
@@ -837,7 +755,8 @@ export function QuotationForm() {
         ...prev,
         totalAmount: String(totalAmount),
         ticketPrice: String(averageTicketPrice),
-        // Employees removed from this flow
+        // Preservar datos de empleados
+        employees: prev.employees
       }))
     } catch (error) {
       console.error("Error calculating quotation:", error)
@@ -852,16 +771,29 @@ export function QuotationForm() {
   }
 
   const handleSaveQuotation = async () => {
-    if (!results) return
-    if (!session) {
+    console.log('Starting save quotation process...')
+    
+    if (!results) {
+      console.log('No results available for saving')
       toast({
         title: "Error",
-        description: "You must be logged in to save quotations",
+        description: "Debes calcular la cotización antes de guardar",
+        variant: "destructive",
+      })
+      return
+    }
+    
+    if (!session) {
+      console.log('No session available')
+      toast({
+        title: "Error",
+        description: "Debes iniciar sesión para guardar cotizaciones",
         variant: "destructive",
       })
       return
     }
 
+    console.log('Setting isSaving to true...')
     setIsSaving(true)
     try {
       // Calculate total ticket quantity from sectors
@@ -903,6 +835,11 @@ export function QuotationForm() {
           }
         },
         credentialsCost: Number(formData.credentialsCost) || 0,
+        employees: formData.employees.map(emp => ({
+          employeeTypeId: emp.employeeTypeId,
+          quantity: Number(emp.quantity),
+          days: Number(emp.days)
+        })),
         mobilityKilometers: Number(formData.mobilityKilometers) || 0,
         numberOfTolls: Number(formData.numberOfTolls) || 0,
         tollsCost: Number(formData.tollsCost) || 0,
@@ -935,7 +872,8 @@ export function QuotationForm() {
         additionalServiceItems: formData.additionalServiceItems
       };
 
-      console.log('Sending complete quotation data:', formDataForSubmission);
+      console.log('Sending quotation data to server...')
+      console.log('Form data for submission:', formDataForSubmission);
 
       const response = await fetch("/api/quotations", {
         method: "POST",
@@ -946,29 +884,49 @@ export function QuotationForm() {
         body: JSON.stringify(formDataForSubmission),
       })
 
+      console.log('Response received:', response.status, response.statusText)
+
       if (!response.ok) {
         const errorData = await response.json()
+        console.error('Server error response:', errorData)
         throw new Error(errorData.error || "Failed to save quotation")
       }
 
+      const savedQuotation = await response.json()
+      console.log('Quotation saved successfully:', savedQuotation)
+      
       toast({
-        title: "Success",
-        description: "Quotation saved successfully",
+        title: "Éxito",
+        description: "Cotización guardada exitosamente",
       })
       
-      // Limpiar datos después de guardar exitosamente
+      console.log('Clearing form data...')
       clearFormData()
       
-      // Redirect to dashboard
+      console.log('Closing save modal...')
+      setIsSaveModalOpen(false)
+      
+      console.log('Redirecting to dashboard...')
+      // Redirect immediately to dashboard
       router.push('/dashboard')
+      
+      // Also try window.location as backup
+      setTimeout(() => {
+        if (window.location.pathname === '/quotation') {
+          console.log('Router push failed, using window.location...')
+          window.location.href = '/dashboard'
+        }
+      }, 500)
     } catch (error) {
       console.error("Error saving quotation:", error)
+      console.error("Error details:", error)
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to save quotation. Please try again.",
+        description: error instanceof Error ? error.message : "Error al guardar la cotización. Por favor inténtalo de nuevo.",
         variant: "destructive",
       })
     } finally {
+      console.log('Resetting isSaving to false...')
       setIsSaving(false)
     }
   }
@@ -1239,29 +1197,208 @@ export function QuotationForm() {
                 </CardContent>
               </Card>
               
-              {/* General Costs merged into Custom Operational Costs as 'Movilidad' */}
+              {/* General Costs Card */}
+              <Card>
+                 <CardHeader>
+                  <CardTitle>Costos Operativos Generales</CardTitle>
+                  <CardDescription>Costos asociados a credenciales y movilidad.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <TooltipLabel htmlFor="credentialsCost" label="Costo Credenciales" tooltip="Costo total estimado para credenciales (opcional)." />
+                      <Input 
+                        id="credentialsCost" 
+                        name="credentialsCost"
+                        type="number" 
+                        value={formData.credentialsCost} 
+                        onChange={handleInputChange} 
+                        placeholder="Ej: 5000" 
+                        min="0"
+                        step="100"
+                      />
+                    </div>
+                  </div>
+                  <Separator />
+                  <p className="font-medium text-sm">Movilidad</p>
+                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                     <div>
+                        <TooltipLabel htmlFor="mobilityKilometers" label="Kilómetros Totales" tooltip="Distancia total estimada a recorrer (ida y vuelta)." required />
+                        <Input 
+                          id="mobilityKilometers" 
+                          name="mobilityKilometers"
+                          type="number" 
+                          value={formData.mobilityKilometers} 
+                          onChange={handleInputChange} 
+                          placeholder="Ej: 150" 
+                          min="0"
+                          step="10"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <TooltipLabel htmlFor="numberOfTolls" label="N° Peajes (Ida y Vuelta)" tooltip="Cantidad total de peajes en el trayecto completo." required />
+                        <Input 
+                          id="numberOfTolls" 
+                          name="numberOfTolls"
+                          type="number" 
+                          value={formData.numberOfTolls} 
+                          onChange={handleInputChange} 
+                          placeholder="Ej: 4" 
+                          min="0"
+                          step="1"
+                          required
+                        />
+                      </div>
+                       <div>
+                        <TooltipLabel htmlFor="tollsCost" label="Costo Promedio Peaje" tooltip="Costo promedio de cada peaje." required />
+                        <Input 
+                          id="tollsCost" 
+                          name="tollsCost"
+                          type="number" 
+                          value={formData.tollsCost} 
+                          onChange={handleInputChange} 
+                          placeholder="Ej: 300" 
+                          min="0"
+                          step="50"
+                          required
+                        />
+                      </div>
+                   </div>
+                </CardContent>
+              </Card>
               
-              {/* Employees Card removed as requested */}
+              {/* Employees Card */}
+              <Card>
+                 <CardHeader>
+                  <CardTitle>Personal Afectado</CardTitle>
+                  <CardDescription>Selecciona el tipo, cantidad y días de trabajo del personal necesario.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="space-y-4">
+                      {formData.employees.map((employee, index) => (
+                        <div key={index} className="flex flex-wrap sm:flex-nowrap gap-4 items-end border-b pb-4 last:border-b-0 last:pb-0">
+                          <div className="flex-grow min-w-[150px]">
+                            <Label htmlFor={`employeeType-${index}`}>Tipo</Label>
+                            <Select
+                              value={employee.employeeTypeId}
+                              onValueChange={(value) => {
+                                const newEmployees = [...formData.employees];
+                                newEmployees[index].employeeTypeId = value;
+                                setFormData({ ...formData, employees: newEmployees });
+                              }}
+                            >
+                              <SelectTrigger id={`employeeType-${index}`}>
+                                <SelectValue placeholder="Seleccionar Tipo" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {employeeTypes.map((type) => (
+                                  <SelectItem key={type.id} value={type.id}>
+                                    {type.name} ({formatCurrency(type.costPerDay)}/día)
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="w-20 flex-shrink-0">
+                            <Label htmlFor={`employeeQuantity-${index}`}>Cant.</Label>
+                            <Input
+                              id={`employeeQuantity-${index}`}
+                              type="number"
+                              value={employee.quantity}
+                              onChange={(e) => {
+                                const newEmployees = [...formData.employees];
+                                newEmployees[index].quantity = e.target.value;
+                                setFormData({ ...formData, employees: newEmployees });
+                              }}
+                              min="1"
+                              placeholder="Cant."
+                              required
+                            />
+                          </div>
+                          <div className="w-20 flex-shrink-0">
+                            <Label htmlFor={`employeeDays-${index}`}>Días</Label>
+                            <Input
+                              id={`employeeDays-${index}`}
+                              type="number"
+                              value={employee.days}
+                              onChange={(e) => {
+                                const newEmployees = [...formData.employees];
+                                newEmployees[index].days = e.target.value;
+                                setFormData({ ...formData, employees: newEmployees });
+                              }}
+                              min="1"
+                              placeholder="Días"
+                              required
+                            />
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-muted-foreground hover:text-destructive flex-shrink-0"
+                            onClick={() => {
+                              const newEmployees = formData.employees.filter((_, i) => i !== index);
+                              setFormData({ ...formData, employees: newEmployees });
+                            }}
+                          >
+                            <X className="h-4 w-4" />
+                            <span className="sr-only">Eliminar</span>
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                    <Button 
+                        variant="outline"
+                        onClick={() => setFormData({ ...formData, employees: [...formData.employees, { employeeTypeId: '', quantity: '1', days: '1' }] })} 
+                        className="mt-4"
+                    >
+                      <Plus className="w-4 h-4 mr-2" /> Añadir Personal
+                    </Button>
+                </CardContent>
+              </Card>
               
-              {/* Costos Operativos */}
+              {/* Custom Operational Costs Card */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Costos Operativos Personalizados</CardTitle>
+                  <CardDescription>Añade cualquier otro costo operativo específico del evento.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {/* Calculamos los valores totales a partir de los sectores de tickets */}
+                  {(() => {
+                    // Calcular el valor total y la cantidad total de tickets
+                    let calculatedTotalValue = 0;
+                    let calculatedTotalQuantity = 0;
+                    
+                    if (formData.ticketSectors && formData.ticketSectors.length > 0) {
+                      formData.ticketSectors.forEach(sector => {
+                        sector.variations.forEach(variation => {
+                          calculatedTotalValue += variation.price * variation.quantity;
+                          calculatedTotalQuantity += variation.quantity;
+                        });
+                      });
+                    }
+                    
+                    return (
                       <CustomOperationalCosts 
                         value={formData.customOperationalCosts} 
                         onChange={handleCustomOperationalCostsDataChange} 
                         ticketSectors={formData.ticketSectors}
-                totalAmount={ticketSectorsTotals.totalValue}
-                ticketQuantity={ticketSectorsTotals.totalQuantity}
-                mobilityKilometers={Number(formData.mobilityKilometers) || 0}
-                numberOfTolls={Number(formData.numberOfTolls) || 0}
-                tollsCost={Number(formData.tollsCost) || 0}
-                onMobilityChange={(field, value) => setFormData(prev => ({ ...prev, [field]: String(value) }))}
-              />
+                        totalAmount={calculatedTotalValue}
+                        ticketQuantity={calculatedTotalQuantity}
+                      />
+                    );
+                  })()}
+                </CardContent>
+              </Card>
 
               {/* Agregar componente de Servicios Adicionales Personalizados */}
               <Separator className="my-6" />
               <CustomAdditionalServices
                 value={formData.additionalServiceItems}
                 onChange={handleAdditionalServicesDataChange}
-                totalAmount={ticketSectorsTotals.totalValue}
+                // Podríamos pasar el totalAmount calculado si es necesario para porcentajes
+                // totalAmount={calculatedTotalAmount} 
               />
             </div>
           </TabsContent>
@@ -1391,7 +1528,7 @@ export function QuotationForm() {
               </Card>
             ) : results ? (
                 <div className="mt-8">
-                  <QuotationResultsComponent 
+                  <QuotationResults 
                     id={null as any}
                     results={results} 
                     onStatusChange={async (id: string, newStatus: "review" | "approved" | "rejected"): Promise<void> => { 

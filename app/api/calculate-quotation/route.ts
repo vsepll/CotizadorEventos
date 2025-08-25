@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
-import { prisma } from "@/lib/prisma"
+import { PrismaClient } from "@prisma/client"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth"
+
+const prisma = new PrismaClient()
 
 // Define schema for ticket variation
 const TicketVariationSchema = z.object({
@@ -23,7 +27,7 @@ const QuotationInputSchema = z.object({
   totalAmount: z.number().positive().optional(),
   ticketPrice: z.number().positive().optional(),
   platform: z.object({
-    name: z.enum(["TICKET_PLUS", "PALCO4", "SVT"]),
+    name: z.enum(["TICKET_PLUS", "PALCO4"]),
     percentage: z.number().min(0).max(100)
   }),
   additionalServiceItems: z.array(z.object({
@@ -68,6 +72,31 @@ const QuotationInputSchema = z.object({
 
 type QuotationInput = z.infer<typeof QuotationInputSchema>
 
+// OPTIMIZACIÓN: Helper para logs solo en desarrollo
+const devLog = (message: string, data?: any) => {
+  if (process.env.NODE_ENV === 'development') {
+    console.log(message, data)
+  }
+}
+
+// ROI y métricas financieras interfaces
+interface ROIMetrics {
+  basicROI: number
+  roiPerTicket: number
+  investmentMultiplier: number
+  contributionMargin: number
+  breakEvenTickets: number
+}
+
+interface FinancialMetrics {
+  profitMarginOnSales: number
+  operationalEfficiency: number
+  costPerTicket: number
+  revenuePerTicket: number
+  operationalCostRatio: number
+  platformCostRatio: number
+}
+
 async function calculateQuotation(input: QuotationInput, globalParameters: any) {
   const {
     totalAmount = 0,
@@ -105,13 +134,11 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
     ticketQuantity = calculatedTotalQuantity;
   }
   
-  const isPalco4 = platform.name === "PALCO4" || platform.name === "SVT"
-  
   // Determine event days. If employees array is provided we will use the maximum number of days among them as a proxy.
-  // Defaults to 1 if not definable.
+  // Defaults to 1 if not definable. Si no hay días especificados, usar 1 como valor por defecto
   const eventDays = employees.length > 0
-    ? employees.reduce((max, e) => Math.max(max, e.days ?? 0), 0)
-    : 0;
+    ? Math.max(employees.reduce((max, e) => Math.max(max, e.days ?? 1), 1), 1)
+    : 1;
 
   // Nota: Si se necesita el total de personas (audiencia) para algún cálculo futuro, usar ticketQuantity directamente.
 
@@ -121,7 +148,7 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
   }
 
   // Calculate platform fee (as a cost)
-  const platformFee = isPalco4 
+  const platformFee = platform.name === "PALCO4" 
     ? ticketQuantity * globalParameters.palco4FeePerTicket 
     : totalValue * (platform.percentage / 100)
 
@@ -130,9 +157,7 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
   
   // If ticket sectors are defined, calculate service charge based on them
   if (ticketSectors.length > 0) {
-    if (process.env.NODE_ENV !== "production") {
-      console.log('Calculando cargo de servicio basado en sectores de tickets:', JSON.stringify(ticketSectors, null, 2));
-    }
+    devLog('Calculando cargo de servicio basado en sectores de tickets:', JSON.stringify(ticketSectors, null, 2));
     
     ticketSectors.forEach(sector => {
       sector.variations.forEach(variation => {
@@ -148,14 +173,12 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
           charge = (variation.price * variation.quantity) * (serviceCharge / 100);
         }
         
-        console.log(`Variación: ${variation.name}, Tipo: ${serviceChargeType}, Valor: ${serviceCharge}, Cargo calculado: ${charge}`);
+        devLog(`Variación: ${variation.name}, Tipo: ${serviceChargeType}, Valor: ${serviceCharge}, Cargo calculado: ${charge}`);
         ticketingFee += charge;
       });
     });
     
-    if (process.env.NODE_ENV !== "production") {
-      console.log('Cargo de servicio total calculado:', ticketingFee);
-    }
+    devLog('Cargo de servicio total calculado:', ticketingFee);
   }
   
   // Calculate additional services from items (percentage is now handled within the item itself)
@@ -190,7 +213,7 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
   )
 
   // Calculate Line cost (only if not using Palco4)
-  const lineCost = isPalco4 ? 0 : totalValue * (globalParameters.lineCostPercentage / 100)
+  const lineCost = platform.name === "PALCO4" ? 0 : totalValue * (globalParameters.lineCostPercentage / 100)
 
   // Calculate employee costs
   let employeeCosts = 0
@@ -273,7 +296,7 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
   // Calculate operational costs
   const operationalCosts = {
     credentials: Number(globalParameters.defaultCredentialsCost) || 0,
-    ticketing: isPalco4 ? 0 : ticketQuantity * globalParameters.ticketingCostPerTicket,
+    ticketing: platform.name === "PALCO4" ? 0 : ticketQuantity * globalParameters.ticketingCostPerTicket,
     employees: employeeCosts,
     mobility: totalMobilityCost,
     custom: computedCustomOperationalCosts,
@@ -307,11 +330,53 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
   // Cálculo de la rentabilidad basado en el costo total
   const grossProfitability = totalCosts > 0 ? (grossMargin / totalCosts) * 100 : 0
 
+  // ========== CÁLCULOS DE ROI Y MÉTRICAS FINANCIERAS ==========
+  
+  // Cálculo de métricas ROI
+  const roiMetrics: ROIMetrics = {
+    // ROI básico (igual a grossProfitability)
+    basicROI: grossProfitability,
+    
+    // ROI por ticket vendido
+    roiPerTicket: ticketQuantity > 0 ? grossMargin / ticketQuantity : 0,
+    
+    // Múltiplo de inversión - cuántas veces se recupera la inversión
+    investmentMultiplier: totalCosts > 0 ? (totalRevenue / totalCosts) : 0,
+    
+    // Margen de contribución como porcentaje de ingresos
+    contributionMargin: totalRevenue > 0 ? (grossMargin / totalRevenue) * 100 : 0,
+    
+    // Break-even en tickets - cuántos tickets se necesitan para cubrir costos
+    breakEvenTickets: ticketingFee > 0 && ticketQuantity > 0 ? 
+      Math.ceil(totalCosts / (ticketingFee / ticketQuantity + (additionalServices / ticketQuantity))) : 0,
+  }
+
+  // Cálculo de métricas financieras adicionales
+  const financialMetrics: FinancialMetrics = {
+    // Rentabilidad sobre ventas totales (no solo revenue de servicio)
+    profitMarginOnSales: totalValue > 0 ? (grossMargin / totalValue) * 100 : 0,
+    
+    // Eficiencia operativa - qué tan eficientemente se generan ingresos vs costos operativos
+    operationalEfficiency: operationalCosts.total > 0 ? (totalRevenue / operationalCosts.total) : 0,
+    
+    // Costo promedio por ticket
+    costPerTicket: ticketQuantity > 0 ? totalCosts / ticketQuantity : 0,
+    
+    // Ingreso promedio por ticket (de nuestros servicios)
+    revenuePerTicket: ticketQuantity > 0 ? totalRevenue / ticketQuantity : 0,
+    
+    // Ratio de costos operativos vs costos totales
+    operationalCostRatio: totalCosts > 0 ? (operationalCosts.total / totalCosts) * 100 : 0,
+    
+    // Ratio de costos de plataforma vs costos totales
+    platformCostRatio: totalCosts > 0 ? ((platformFee + lineCost) / totalCosts) * 100 : 0,
+  }
+
   // Log calculations for debugging
-  if (process.env.NODE_ENV !== "production") {
-    console.log('Calculation details:', {
+  devLog('Calculation details:', {
     totalValue,
     ticketQuantity,
+    eventDays,
     ticketingFee,
     additionalServices,
     platformFee,
@@ -325,11 +390,27 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
     totalRevenue,
     totalCosts,
     grossMargin,
-    grossProfitability
-    })
-    
-    console.log('Final Calculation Results:', { ticketQuantity, totalValue, platformFee, ticketingFee, additionalServices, paywayFees, lineCost, operationalCosts, totalRevenue, totalCosts, grossMargin, grossProfitability });
-  }
+    grossProfitability,
+    roiMetrics,
+    financialMetrics
+  })
+
+  devLog('Final Calculation Results:', { 
+    ticketQuantity, 
+    totalValue, 
+    platformFee, 
+    ticketingFee, 
+    additionalServices, 
+    paywayFees, 
+    lineCost, 
+    operationalCosts, 
+    totalRevenue, 
+    totalCosts, 
+    grossMargin, 
+    grossProfitability,
+    roiMetrics,
+    financialMetrics
+  });
 
   return {
     ticketQuantity,
@@ -339,13 +420,18 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
     ticketingFee,
     additionalServices,
     paywayFees,
-    palco4Cost: isPalco4 ? platformFee : 0,
+    palco4Cost: platform.name === "PALCO4" ? platformFee : 0,
     lineCost,
     operationalCosts,
     totalRevenue,
     totalCosts,
     grossMargin,
     grossProfitability,
+    // Nuevas métricas de ROI y análisis financiero
+    roiMetrics,
+    financialMetrics,
+    // Información adicional para análisis
+    eventDurationDays: eventDays,
     ticketSectors: ticketSectors.map(sector => ({
       name: sector.name,
       variations: sector.variations.map(variation => ({
@@ -388,33 +474,29 @@ async function ensureGlobalParameters() {
   return parameters
 }
 
+// OPTIMIZACIÓN: Añadir headers de cache
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    if (process.env.NODE_ENV !== "production") {
-      console.log('Received body:', body)
-    }
+    devLog('Received body:', body)
 
     const validatedInput = QuotationInputSchema.parse(body)
-    if (process.env.NODE_ENV !== "production") {
-      console.log('Validated input:', validatedInput)
-      console.log('Calculating new result');
-    }
+    devLog('Validated input:', validatedInput)
 
-    // Ya no usamos caché para los resultados
+    devLog('Calculating new result');
     const globalParameters = await ensureGlobalParameters()
     if (!globalParameters) {
       throw new Error("Failed to ensure global parameters")
     }
 
     const results = await calculateQuotation(validatedInput, globalParameters)
-    if (process.env.NODE_ENV !== "production") {
-      console.log('Calculation results:', results)
-    }
+    devLog('Calculation results:', results)
 
-    // Ya no guardamos resultados en caché
-
-    return NextResponse.json(results)
+    // OPTIMIZACIÓN: Configurar headers de cache apropiados
+    const response = NextResponse.json(results)
+    response.headers.set('Cache-Control', 'private, max-age=0, no-cache')
+    
+    return response
   } catch (error) {
     console.error('Server error:', error)
     if (error instanceof z.ZodError) {

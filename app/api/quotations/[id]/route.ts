@@ -1,23 +1,48 @@
 import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import { prisma } from "@/lib/prisma"
+import { PrismaClient } from "@prisma/client"
+
+const prisma = new PrismaClient()
+
+// Helper function to safely parse JSON fields
+function parseJsonFields(quotation: any) {
+  try {
+    // Parse JSON fields if they are strings
+    const paywayFees = typeof quotation.paywayFees === 'string' 
+      ? JSON.parse(quotation.paywayFees) 
+      : quotation.paywayFees || {}
+    
+    const operationalCosts = typeof quotation.operationalCosts === 'string' 
+      ? JSON.parse(quotation.operationalCosts) 
+      : quotation.operationalCosts || {}
+    
+    return {
+      ...quotation,
+      paywayFees,
+      operationalCosts
+    }
+  } catch (error) {
+    console.error('Error parsing JSON fields:', error)
+    return {
+      ...quotation,
+      paywayFees: {},
+      operationalCosts: {}
+    }
+  }
+}
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
 
   if (!session?.user?.id) {
-    if (process.env.NODE_ENV !== "production") {
-      console.log('No session or user ID')
-    }
+    console.log('No session or user ID')
     return NextResponse.json({ error: "Unauthorized - No session" }, { status: 401 })
   }
 
   try {
-    if (process.env.NODE_ENV !== "production") {
-      console.log('Fetching quotation with ID:', params.id)
-      console.log('User ID:', session.user.id)
-    }
+    console.log('Fetching quotation with ID:', params.id)
+    console.log('User ID:', session.user.id)
     
     const quotation = await prisma.quotation.findUnique({
       where: { id: params.id },
@@ -31,21 +56,16 @@ export async function GET(request: Request, { params }: { params: { id: string }
     })
 
     if (!quotation) {
-      if (process.env.NODE_ENV !== "production") {
-        console.log('Quotation not found')
-      }
+      console.log('Quotation not found')
       return NextResponse.json({ error: "Quotation not found" }, { status: 404 })
     }
 
-    if (process.env.NODE_ENV !== "production") {
-      console.log('Found quotation:', quotation)
-      console.log('Quotation user ID:', quotation.userId)
-    }
+    console.log('Found quotation:', quotation)
+    console.log('Quotation user ID:', quotation.userId)
 
-    if (quotation.userId !== session.user.id) {
-      if (process.env.NODE_ENV !== "production") {
-        console.log('User ID mismatch')
-      }
+    // Verificar permisos: debe ser el propietario o un administrador
+    if (quotation.userId !== session.user.id && session.user.role !== "ADMIN") {
+      console.log('User ID mismatch and not admin')
       return NextResponse.json({ error: "Unauthorized - Not your quotation" }, { status: 401 })
     }
 
@@ -65,7 +85,10 @@ export async function GET(request: Request, { params }: { params: { id: string }
       totalAmount: monetaryAmount || 0
     };
 
-    return NextResponse.json(transformedQuotation)
+    // Parse JSON fields before sending to frontend
+    const parsedQuotation = parseJsonFields(transformedQuotation)
+
+    return NextResponse.json(parsedQuotation)
   } catch (error) {
     console.error("Error fetching quotation:", error)
     return NextResponse.json({ error: "Failed to fetch quotation" }, { status: 500 })
@@ -88,7 +111,8 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
       return NextResponse.json({ error: "Quotation not found" }, { status: 404 })
     }
 
-    if (quotation.userId !== session.user.id) {
+    // Verificar permisos: debe ser el propietario o un administrador
+    if (quotation.userId !== session.user.id && session.user.role !== "ADMIN") {
       return NextResponse.json({ error: "Unauthorized - Not your quotation" }, { status: 401 })
     }
 

@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, DollarSign, Percent, Activity, CreditCard, Building
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { useMemo, useState } from "react"
+import { useSession } from "next-auth/react"
 
 interface QuotationResultsProps {
   id: string;
@@ -21,7 +22,6 @@ interface StatCardProps {
   prefix?: string;
   suffix?: string;
   icon?: LucideIcon;
-  decimals?: number;
 }
 
 interface DetailCardItem {
@@ -99,6 +99,10 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 export function QuotationResults({ id, results, comparisonResults, status = 'draft', onStatusChange }: QuotationResultsProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { data: session } = useSession()
+
+  // Verificar si el usuario es administrador
+  const isAdmin = session?.user?.role === "ADMIN"
 
   if (!results) {
     return null
@@ -131,6 +135,8 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
   }), []);
 
   const revenueData = useMemo(() => {
+    if (!isAdmin) return []; // No mostrar desglose para usuarios no-admin
+    
     console.log('Construyendo revenueData con:', {
       ticketingFee: results.ticketingFee,
       additionalServices: results.additionalServices
@@ -148,9 +154,11 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
         color: COLOR_PALETTE.revenue.additional 
       },
     ];
-  }, [results.ticketingFee, results.additionalServices, COLOR_PALETTE]);
+  }, [results.ticketingFee, results.additionalServices, COLOR_PALETTE, isAdmin]);
 
   const costsData = useMemo(() => {
+    if (!isAdmin) return []; // No mostrar desglose para usuarios no-admin
+    
     // Make sure we have valid data
     const validatedResults = results || {};
     
@@ -189,7 +197,7 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
     return allCosts
       .filter(item => item.value > 0)
       .sort((a, b) => b.value - a.value);
-  }, [results?.palco4Cost, results?.paywayFees?.total, results?.lineCost, results?.operationalCosts?.total, COLOR_PALETTE]);
+  }, [results?.palco4Cost, results?.paywayFees?.total, results?.lineCost, results?.operationalCosts?.total, COLOR_PALETTE, isAdmin]);
 
   const profitabilityData = useMemo(() => [
     { 
@@ -209,51 +217,24 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
     },
   ], [results.totalRevenue, results.totalCosts, results.grossMargin, COLOR_PALETTE]);
 
-  // --- Financial indicators (ROI, Break-even, per-ticket metrics) ---
-  const financials = useMemo(() => {
-    const ticketQty = Number(results.ticketQuantity) || 0;
-    const totalRevenue = Number(results.totalRevenue) || 0;
-    const totalCosts = Number(results.totalCosts) || 0;
-    const grossMargin = Number(results.grossMargin ?? (totalRevenue - totalCosts)) || 0;
-    const serviceChargeTotal = Number(results.ticketingFee) || 0;
-    const additionalServicesTotal = Number(results.additionalServices) || 0;
-    const revenuePerTicket = ticketQty > 0 ? (serviceChargeTotal + additionalServicesTotal) / ticketQty : 0;
-    const costPerTicket = ticketQty > 0 ? totalCosts / ticketQty : 0;
-    const marginPerTicket = ticketQty > 0 ? grossMargin / ticketQty : 0;
-    const roiPercent = totalCosts > 0 ? (grossMargin / totalCosts) * 100 : 0;
-    const roiRatio = totalCosts > 0 ? (grossMargin / totalCosts) : 0;
-    const breakEvenTickets = revenuePerTicket > 0 ? Math.ceil(totalCosts / revenuePerTicket) : 0;
-
-    return {
-      ticketQty,
-      revenuePerTicket,
-      costPerTicket,
-      marginPerTicket,
-      roiPercent,
-      roiRatio,
-      breakEvenTickets,
-    };
-  }, [results]);
-  // --- End Financial indicators ---
-
   const getPercentageDifference = (value1: number, value2: number) => {
     if (value1 === 0) return 0
     return ((value2 - value1) / value1) * 100
   }
 
-  const StatCard = ({ title, value, trend, prefix = "$", suffix = "", icon: Icon, decimals = 2 }: StatCardProps) => (
+  const StatCard = ({ title, value, trend, prefix = "$", suffix = "", icon: Icon }: StatCardProps) => (
     <Card className="overflow-hidden transition-all hover:shadow-md">
       <CardHeader className="pb-2">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-1">
+        <div className="flex items-center space-x-2">
           {Icon && <Icon className="w-4 h-4 text-muted-foreground" />}
-          <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground whitespace-normal leading-snug break-words" title={title}>{title}</CardTitle>
+          <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
         </div>
       </CardHeader>
       <CardContent>
         <div className="flex items-center justify-between">
           <div className="space-y-1">
-            <p className="text-lg sm:text-xl font-bold">
-              {prefix}{formatNumber(value, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}{suffix}
+            <p className="text-xl font-bold">
+              {prefix}{formatNumber(value)}{suffix}
             </p>
             {trend !== undefined && trend !== 0 && (
               <p className={`text-xs flex items-center ${trend > 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -556,8 +537,10 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
     });
   }
 
-  // Safer approach to get operational costs
+  // Safer approach to get operational costs - solo para admins
   const getOperationalCosts = () => {
+    if (!isAdmin) return { total: 0 }; // Solo retornar total para usuarios no-admin
+    
     const opCosts = results.operationalCosts || {};
     const custom = Array.isArray(opCosts.custom) 
         ? opCosts.custom 
@@ -581,8 +564,10 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
     };
   };
   
-  // --- Define getTicketInfo function --- 
+  // --- Define getTicketInfo function (solo para admins) --- 
   const getTicketInfo = () => {
+    if (!isAdmin) return []; // No mostrar información detallada para usuarios no-admin
+    
     const ticketItems: DetailCardItem[] = [];
     
     // Format Ticket Quantity as integer string
@@ -636,8 +621,10 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
   }
   // --- End define getTicketInfo --- 
 
-  // Get operational costs including custom costs  
+  // Get operational costs including custom costs - solo para admins
   const operationalCostsObject = useMemo(() => {
+    if (!isAdmin) return { total: 0 }; // Solo total para usuarios no-admin
+    
     const opCosts = results.operationalCosts || {};
     const custom = Array.isArray(opCosts.custom) 
         ? opCosts.custom 
@@ -656,12 +643,14 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
       custom: custom,
       total: opCosts.total || 0
     };
-  }, [results]);
+  }, [results, isAdmin]);
     
-  const ticketInfo = useMemo(() => getTicketInfo(), [results]);
+  const ticketInfo = useMemo(() => getTicketInfo(), [results, isAdmin]);
   
-  // --- Transform operationalCosts for DetailCard --- 
+  // --- Transform operationalCosts for DetailCard (solo para admins) --- 
   const operationalCostsForCard: DetailCardItem[] = useMemo(() => {
+    if (!isAdmin) return []; // No mostrar desglose para usuarios no-admin
+    
     const items: DetailCardItem[] = [];
     if (operationalCostsObject.credentials > 0) {
       items.push({ label: "Credenciales", value: `$${formatNumber(operationalCostsObject.credentials)}` });
@@ -684,11 +673,13 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
     }
     // Add other operational costs if they are separate properties in the object
     return items;
-  }, [operationalCostsObject, results]);
+  }, [operationalCostsObject, results, isAdmin]);
   // --- End transform --- 
   
-  // --- Get Custom Operational Costs Breakdown ---  
+  // --- Get Custom Operational Costs Breakdown (solo para admins) ---  
   const customOperationalCostsForCard: DetailCardItem[] = useMemo(() => {
+    if (!isAdmin) return []; // No mostrar para usuarios no-admin
+    
     const items: DetailCardItem[] = [];
     // Use the custom costs from operationalCostsObject
     const customCosts = operationalCostsObject.custom || [];
@@ -736,8 +727,7 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
     }
         
     return items;
-  }, [operationalCostsObject.custom]);
-  // --- End Custom Operational Costs Breakdown ---
+  }, [operationalCostsObject.custom, isAdmin]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -794,8 +784,8 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
             {getStatusText(status)}
           </span>
           
-          {/* Action Buttons based on status - Eliminado el botón "Enviar a Revisión" */}
-          {status === 'review' && (
+          {/* Action Buttons based on status - Solo para admins */}
+          {isAdmin && status === 'review' && (
             <>
               <Button 
                 variant="destructive" 
@@ -836,6 +826,7 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
         </Card>
       )}
 
+      {/* Métricas principales - siempre visibles */}
       <div className="grid gap-4 md:grid-cols-2">
         <StatCard 
           title="Ingresos Totales" 
@@ -865,148 +856,214 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-6">
-        {/* Financial Indicators - New Format */}
-        <Card className="overflow-hidden transition-all hover:shadow-md">
+      {/* Métricas de ROI y Análisis Financiero */}
+      {results.roiMetrics && (
+        <Card>
           <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Activity className="h-5 w-5" />
-              Análisis de Retorno sobre la Inversión (ROI)
+            <CardTitle className="flex items-center space-x-2">
+              <Activity className="w-5 h-5" />
+              <span>Análisis de Retorno sobre la Inversión (ROI)</span>
             </CardTitle>
             <CardDescription>
               Métricas avanzadas de rentabilidad y análisis financiero del evento
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            {/* First Row - Main ROI Metrics */}
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-1">
-                <p className="text-sm text-muted-foreground">ROI por Ticket</p>
-                <p className="text-2xl font-bold">${formatNumber(financials.marginPerTicket, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                <p className="text-xs text-muted-foreground">Ganancia neta por ticket</p>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">ROI por Ticket</h4>
+                <p className="text-2xl font-bold">
+                  ${formatNumber(results.roiMetrics.roiPerTicket)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Ganancia neta por ticket
+                </p>
               </div>
-              <div className="space-y-1">
-                <p className="text-sm text-muted-foreground">Múltiplo de Inversión</p>
-                <p className="text-2xl font-bold">{formatNumber(financials.roiRatio + 1, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x</p>
-                <p className="text-xs text-muted-foreground">Veces que se recupera la inversión</p>
+              
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">Múltiplo de Inversión</h4>
+                <p className="text-2xl font-bold">
+                  {formatNumber(results.roiMetrics.investmentMultiplier, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Veces que se recupera la inversión
+                </p>
               </div>
-              <div className="space-y-1">
-                <p className="text-sm text-muted-foreground">Margen de Contribución</p>
-                <p className="text-2xl font-bold">{formatNumber(results.grossProfitability || 0, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%</p>
-                <p className="text-xs text-muted-foreground">% del margen sobre ingresos</p>
+              
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">Margen de Contribución</h4>
+                <p className="text-2xl font-bold">
+                  {formatNumber(results.roiMetrics.contributionMargin, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  % del margen sobre ingresos
+                </p>
               </div>
-            </div>
-
-            {/* Break-even */}
-            <div className="border-t pt-4">
-              <p className="text-sm text-muted-foreground mb-2">Break-even (Tickets)</p>
-              <p className="text-3xl font-bold">{Math.ceil(financials.breakEvenTickets)}</p>
-              <p className="text-xs text-muted-foreground">Tickets para cubrir costos</p>
+              
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">Break-even (Tickets)</h4>
+                <p className="text-2xl font-bold">
+                  {formatNumber(results.roiMetrics.breakEvenTickets, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Tickets para cubrir costos
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
+      )}
 
-        {/* Additional Financial Metrics */}
-        <Card className="overflow-hidden transition-all hover:shadow-md">
+      {/* Métricas Financieras Adicionales */}
+      {results.financialMetrics && (
+        <Card>
           <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <DollarSign className="h-5 w-5" />
-              Métricas Financieras Adicionales
+            <CardTitle className="flex items-center space-x-2">
+              <CreditCard className="w-5 h-5" />
+              <span>Métricas Financieras Adicionales</span>
             </CardTitle>
             <CardDescription>
               Indicadores de eficiencia y análisis por unidad
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            {/* First Row */}
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-1">
-                <p className="text-sm text-muted-foreground">Margen sobre Ventas</p>
-                <p className="text-2xl font-bold">{formatNumber(results.grossProfitability || 0, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%</p>
-                <p className="text-xs text-muted-foreground">Rentabilidad sobre ventas totales</p>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">Margen sobre Ventas</h4>
+                <p className="text-2xl font-bold">
+                  {formatNumber(results.financialMetrics.profitMarginOnSales, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Rentabilidad sobre ventas totales
+                </p>
               </div>
-              <div className="space-y-1">
-                <p className="text-sm text-muted-foreground">Eficiencia Operativa</p>
-                <p className="text-2xl font-bold">{formatNumber((financials.roiRatio + 1), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x</p>
-                <p className="text-xs text-muted-foreground">Ingresos / Costos operativos</p>
+              
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">Eficiencia Operativa</h4>
+                <p className="text-2xl font-bold">
+                  {formatNumber(results.financialMetrics.operationalEfficiency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Ingresos / Costos operativos
+                </p>
               </div>
-              <div className="space-y-1">
-                <p className="text-sm text-muted-foreground">Costo por Ticket</p>
-                <p className="text-2xl font-bold">${formatNumber(financials.costPerTicket, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                <p className="text-xs text-muted-foreground">Costo promedio por ticket</p>
+              
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">Costo por Ticket</h4>
+                <p className="text-2xl font-bold">
+                  ${formatNumber(results.financialMetrics.costPerTicket)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Costo promedio por ticket
+                </p>
               </div>
-            </div>
-
-            {/* Second Row */}
-            <div className="grid grid-cols-3 gap-4 border-t pt-4">
-              <div className="space-y-1">
-                <p className="text-sm text-muted-foreground">Revenue por Ticket</p>
-                <p className="text-2xl font-bold">${formatNumber(financials.revenuePerTicket, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                <p className="text-xs text-muted-foreground">Ingreso promedio por ticket</p>
+              
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">Revenue por Ticket</h4>
+                <p className="text-2xl font-bold">
+                  ${formatNumber(results.financialMetrics.revenuePerTicket)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Ingreso promedio por ticket
+                </p>
               </div>
-              <div className="space-y-1">
-                <p className="text-sm text-muted-foreground">Ratio Costos Operativos</p>
-                <p className="text-2xl font-bold">{formatNumber((operationalCostsObject.total / results.totalCosts) * 100, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%</p>
-                <p className="text-xs text-muted-foreground">% de costos operativos vs total</p>
+              
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">Ratio Costos Operativos</h4>
+                <p className="text-2xl font-bold">
+                  {formatNumber(results.financialMetrics.operationalCostRatio, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  % de costos operativos vs total
+                </p>
               </div>
-              <div className="space-y-1">
-                <p className="text-sm text-muted-foreground">Ratio Costos Plataforma</p>
-                <p className="text-2xl font-bold">{formatNumber(((results.palco4Cost || 0) / results.totalCosts) * 100, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%</p>
-                <p className="text-xs text-muted-foreground">% de costos de plataforma vs total</p>
+              
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-muted-foreground">Ratio Costos Plataforma</h4>
+                <p className="text-2xl font-bold">
+                  {formatNumber(results.financialMetrics.platformCostRatio, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  % de costos de plataforma vs total
+                </p>
               </div>
             </div>
           </CardContent>
         </Card>
+      )}
 
-        {operationalCostsForCard.length > 0 && (
-          <DetailCard 
-            title="Costos Operativos" 
-            items={operationalCostsForCard} 
-            icon={Building}
-          />
-        )}
-        {operationalCostsObject.custom && operationalCostsObject.custom.length > 0 && (
-          <DetailCard 
-            title="Desglose de Costos Operativos Personalizados" 
-            items={customOperationalCostsForCard} 
-            icon={DollarSign}
-          />
-        )}
-        {ticketInfo.length > 0 && (
-          <DetailCard 
-            title="Información de Plataforma y Tickets" 
-            items={ticketInfo} 
-            icon={Activity}
-          />
-        )}
-      </div>
+      {/* Solo mostrar desglose detallado para administradores */}
+      {isAdmin && (
+        <div className="grid grid-cols-1 gap-6">
+          {operationalCostsForCard.length > 0 && (
+            <DetailCard 
+              title="Costos Operativos" 
+              items={operationalCostsForCard} 
+              icon={Building}
+            />
+          )}
+          {operationalCostsObject.custom && operationalCostsObject.custom.length > 0 && (
+            <DetailCard 
+              title="Desglose de Costos Operativos Personalizados" 
+              items={customOperationalCostsForCard} 
+              icon={DollarSign}
+            />
+          )}
+          {ticketInfo.length > 0 && (
+            <DetailCard 
+              title="Información de Plataforma y Tickets" 
+              items={ticketInfo} 
+              icon={Activity}
+            />
+          )}
+        </div>
+      )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Análisis Gráfico</CardTitle>
-          <CardDescription>Visualización de ingresos, costos y rentabilidad.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="costs-pie">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="costs-pie">Costos (Torta)</TabsTrigger>
-              <TabsTrigger value="revenue-pie">Ingresos (Torta)</TabsTrigger>
-              <TabsTrigger value="profit-bar">Rentabilidad (Barras)</TabsTrigger>
-            </TabsList>
-            <TabsContent value="costs-pie" className="mt-4">
-              <CustomPieChart data={costsData} title="Desglose de Costos" />
-            </TabsContent>
-            <TabsContent value="revenue-pie" className="mt-4">
-              <CustomPieChart data={revenueData} title="Desglose de Ingresos" />
-            </TabsContent>
-             <TabsContent value="profit-bar" className="mt-4">
-                <p className="text-center text-muted-foreground p-8">Gráfico de Rentabilidad (Barras) no implementado aún.</p>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+      {/* Mostrar mensaje informativo para usuarios no-admin */}
+      {!isAdmin && (
+        <Card className="bg-blue-50 border-blue-200">
+          <CardContent className="pt-6">
+            <div className="flex items-center space-x-2 text-blue-700">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M12 16v-4"/>
+                <path d="M12 8h.01"/>
+              </svg>
+              <p>Se muestran únicamente las métricas de rentabilidad principales. El desglose detallado de costos está disponible para administradores.</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-      {comparisonResults && (
+      {/* Análisis gráfico - solo para administradores */}
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Análisis Gráfico</CardTitle>
+            <CardDescription>Visualización de ingresos, costos y rentabilidad.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Tabs defaultValue="costs-pie">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="costs-pie">Costos (Torta)</TabsTrigger>
+                <TabsTrigger value="revenue-pie">Ingresos (Torta)</TabsTrigger>
+                <TabsTrigger value="profit-bar">Rentabilidad (Barras)</TabsTrigger>
+              </TabsList>
+              <TabsContent value="costs-pie" className="mt-4">
+                <CustomPieChart data={costsData} title="Desglose de Costos" />
+              </TabsContent>
+              <TabsContent value="revenue-pie" className="mt-4">
+                <CustomPieChart data={revenueData} title="Desglose de Ingresos" />
+              </TabsContent>
+               <TabsContent value="profit-bar" className="mt-4">
+                  <p className="text-center text-muted-foreground p-8">Gráfico de Rentabilidad (Barras) no implementado aún.</p>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+      )}
+
+      {comparisonResults && isAdmin && (
          <Card>
            <CardHeader>
              <CardTitle>Análisis Comparativo</CardTitle>

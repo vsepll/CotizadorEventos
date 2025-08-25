@@ -1,6 +1,6 @@
 "use client"
 
-import { useSession, signOut } from "next-auth/react"
+import { useSession } from "next-auth/react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -12,13 +12,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { User, LogOut, Plus, ClipboardCheck } from "lucide-react"
+import { User, LogOut, Plus, ClipboardCheck, Loader2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { useEffect, useState } from "react"
+import { handleSignOut } from "@/lib/utils"
 
 export function Navbar() {
   const { data: session } = useSession()
   const [reviewCount, setReviewCount] = useState(0)
+  const [isSigningOut, setIsSigningOut] = useState(false)
   
   // Fetch the number of quotations in review status
   useEffect(() => {
@@ -43,6 +45,17 @@ export function Navbar() {
     }
   }, [session])
 
+  const handleLogout = async () => {
+    setIsSigningOut(true)
+    try {
+      await handleSignOut()
+    } catch (error) {
+      console.error("Error durante logout:", error)
+      // El error será manejado por handleSignOut
+      setIsSigningOut(false)
+    }
+  }
+
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-14 items-center">
@@ -58,12 +71,6 @@ export function Navbar() {
               className="transition-colors hover:text-foreground/80 text-foreground/60"
             >
               Cotizaciones
-            </Link>
-            <Link
-              href="/quotation"
-              className="transition-colors hover:text-foreground/80 text-foreground/60"
-            >
-              Nueva Cotización
             </Link>
             <Link
               href="/review-dashboard"
@@ -85,8 +92,12 @@ export function Navbar() {
             {session?.user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-                    <User className="h-4 w-4" />
+                  <Button variant="ghost" className="relative h-8 w-8 rounded-full" disabled={isSigningOut}>
+                    {isSigningOut ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <User className="h-4 w-4" />
+                    )}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-56" align="end" forceMount>
@@ -99,9 +110,13 @@ export function Navbar() {
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => signOut()}>
-                    <LogOut className="mr-2 h-4 w-4" />
-                    <span>Cerrar Sesión</span>
+                  <DropdownMenuItem onClick={handleLogout} disabled={isSigningOut}>
+                    {isSigningOut ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <LogOut className="mr-2 h-4 w-4" />
+                    )}
+                    <span>{isSigningOut ? "Cerrando sesión..." : "Cerrar Sesión"}</span>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
