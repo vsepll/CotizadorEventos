@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { cacheGlobalSettings } from "@/lib/redis";
 
-const prisma = new PrismaClient();
+// Usar cliente Prisma compartido
 
 export async function GET() {
   const session = await getServerSession(authOptions);

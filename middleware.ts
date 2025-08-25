@@ -7,7 +7,9 @@ export default withAuth(
     const isAdminRoute = req.nextUrl.pathname.startsWith("/admin")
 
     if (isAdminRoute && token?.role !== "ADMIN") {
-      console.log("Usuario sin permisos intentando acceder a ruta de admin, redirigiendo...")
+      if (process.env.NODE_ENV !== "production") {
+        console.log("Usuario sin permisos intentando acceder a ruta de admin, redirigiendo...")
+      }
       return NextResponse.redirect(new URL("/dashboard", req.url))
     }
 

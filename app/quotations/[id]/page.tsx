@@ -1,9 +1,10 @@
 import { getServerSession } from "next-auth/next"
 import { redirect } from "next/navigation"
 import { QuotationDetails } from "@/components/quotation-details"
+import { authOptions } from "@/lib/auth"
 
 export default async function QuotationDetailsPage({ params }: { params: { id: string } }) {
-  const session = await getServerSession()
+  const session = await getServerSession(authOptions)
 
   if (!session) {
     redirect("/login")

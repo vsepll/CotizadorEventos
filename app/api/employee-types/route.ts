@@ -23,17 +23,22 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions)
-
-  console.log('Session:', session)
+  if (process.env.NODE_ENV !== "production") {
+    console.log('Session:', session)
+  }
 
   if (!session?.user?.id || session.user.role !== "ADMIN") {
-    console.log('Unauthorized. User:', session?.user)
+    if (process.env.NODE_ENV !== "production") {
+      console.log('Unauthorized. User:', session?.user)
+    }
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
   try {
     const body = await request.json()
-    console.log('Received body:', body)
+    if (process.env.NODE_ENV !== "production") {
+      console.log('Received body:', body)
+    }
     
     const { name, isOperator, costPerDay } = body
 
@@ -51,12 +56,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No admin user found" }, { status: 500 })
     }
 
-    console.log('Creating employee type with data:', {
+    if (process.env.NODE_ENV !== "production") {
+      console.log('Creating employee type with data:', {
       name,
       isOperator,
       costPerDay,
       createdBy: adminUser.id
-    })
+      })
+    }
 
     const employeeType = await prisma.employeeType.create({
       data: {
@@ -67,7 +74,9 @@ export async function POST(request: Request) {
       }
     })
 
-    console.log('Created employee type:', employeeType)
+    if (process.env.NODE_ENV !== "production") {
+      console.log('Created employee type:', employeeType)
+    }
     return NextResponse.json(employeeType)
   } catch (error) {
     console.error("Error creating employee type:", error)
