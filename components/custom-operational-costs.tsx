@@ -285,7 +285,7 @@ export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, 
               </div>
               
               {/* Lista de costos en scroll area para mejor manejo cuando hay muchos ítems */}
-              <ScrollArea className="max-h-[50vh] md:max-h-[60vh]">
+              <ScrollArea className="h-[50vh] md:h-[60vh]">
                 <div className="space-y-3 pb-24 pr-4">
                   {value.map((cost, index) => (
                     <div
