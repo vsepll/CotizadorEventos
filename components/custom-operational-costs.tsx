@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -57,6 +57,16 @@ export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, 
   const isAdmin = session?.user?.role === "ADMIN"
 
   const rowInputClass = "h-8 px-2 text-sm";
+
+  // Mantener referencia a la última fila para hacer scroll cuando se agrega una nueva
+  const lastRowRef = useRef<HTMLDivElement | null>(null)
+
+  // Cuando cambia la cantidad de costos, desplazarse a la última fila para que quede visible
+  useEffect(() => {
+    if (value.length > 0) {
+      lastRowRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+    }
+  }, [value.length])
 
   const typeDescriptions = useMemo(() => ({
     fixed: "Monto fijo independiente de otros factores",
@@ -270,12 +280,13 @@ export function CustomOperationalCosts({ value = [], onChange, totalAmount = 0, 
                 <span></span>
               </div>
               
-              {/* Lista de costos en scroll area para mejor manejo en mobile */}
-              <ScrollArea className="h-full">
+              {/* Lista de costos en scroll area para mejor manejo cuando hay muchos ítems */}
+              <ScrollArea className="max-h-[60vh]">
                 <div className="space-y-3 pb-2 pr-4">
-                  {value.map((cost) => (
+                  {value.map((cost, index) => (
                     <div
                       key={cost.id}
+                      ref={index === value.length - 1 ? lastRowRef : null}
                       className={`grid grid-cols-1 ${isAdmin ? 'md:grid-cols-[minmax(240px,1.8fr)_110px_100px_60px_60px_minmax(140px,1fr)_32px]' : 'md:grid-cols-[minmax(240px,2fr)_130px_80px_80px_minmax(140px,1.5fr)_32px]'} gap-1 md:gap-1 items-center p-2 border rounded-lg hover:bg-muted/10 transition-colors text-sm`}
                     >
                       {/* Mobile labels */}
