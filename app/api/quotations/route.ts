@@ -372,6 +372,26 @@ export async function POST(request: Request) {
     }, { status: 401 })
   }
 
+  // Asegurar que el usuario de la sesión exista en la base de datos antes de crear la cotización
+  try {
+    const existingDbUser = await prisma.user.findUnique({ where: { id: session.user.id } })
+    if (!existingDbUser) {
+      console.log('DB user not found. Creating user record for session user:', session.user.id)
+      await prisma.user.create({
+        data: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          password: user.password,
+          role: user.role as any,
+        }
+      })
+    }
+  } catch (userEnsureError) {
+    console.error('Error ensuring DB user exists:', userEnsureError)
+    return NextResponse.json({ error: "Failed to ensure user exists in database" }, { status: 500 })
+  }
+
   try {
     const body = await request.json()
     if (process.env.NODE_ENV !== "production") {
