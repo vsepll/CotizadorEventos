@@ -322,8 +322,9 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
   // Calculate total revenue -> incluir servicios adicionales como ingreso
   const totalRevenue = ticketingFee + additionalServices;
 
-  // Calculate total costs (platform fee + line cost + operational costs + our payment costs)
-  const totalCosts = platformFee + lineCost + operationalCosts.total + ourPaymentCosts
+  // Calculate total costs (REMOVIENDO platform fee Y line cost del cálculo)
+  // Antes: const totalCosts = platformFee + lineCost + operationalCosts.total + ourPaymentCosts
+  const totalCosts = operationalCosts.total + ourPaymentCosts
 
   // Calculate gross margin and profitability
   const grossMargin = totalRevenue - totalCosts
