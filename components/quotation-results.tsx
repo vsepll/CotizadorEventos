@@ -202,7 +202,7 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
   const profitabilityData = useMemo(() => [
     { 
       name: "Ingresos", 
-      value: Number(results.totalRevenue) || 0,
+      value: Number(results.totalValue ?? results.totalRevenue) || 0,
       color: COLOR_PALETTE.profitability.revenue 
     },
     { 
@@ -215,7 +215,7 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
       value: Number(results.grossMargin) || 0,
       color: COLOR_PALETTE.profitability.margin 
     },
-  ], [results.totalRevenue, results.totalCosts, results.grossMargin, COLOR_PALETTE]);
+  ], [results.totalValue, results.totalRevenue, results.totalCosts, results.grossMargin, COLOR_PALETTE]);
 
   const getPercentageDifference = (value1: number, value2: number) => {
     if (value1 === 0) return 0
@@ -830,9 +830,9 @@ export function QuotationResults({ id, results, comparisonResults, status = 'dra
       <div className="grid gap-4 md:grid-cols-2">
         <StatCard 
           title="Ingresos Totales" 
-          value={results.totalRevenue || 0} 
+          value={(results.totalValue ?? results.totalRevenue) || 0} 
           icon={DollarSign} 
-          trend={comparisonResults ? calculateTrend(results.totalRevenue, comparisonResults.totalRevenue) : undefined}
+          trend={comparisonResults ? calculateTrend((results.totalValue ?? results.totalRevenue), (comparisonResults.totalValue ?? comparisonResults.totalRevenue)) : undefined}
         />
         <StatCard 
           title="Costos Totales" 

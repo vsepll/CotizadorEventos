@@ -327,8 +327,8 @@ async function calculateQuotation(input: QuotationInput, globalParameters: any) 
 
   // Calculate gross margin and profitability
   const grossMargin = totalRevenue - totalCosts
-  // Cálculo de la rentabilidad basado en el costo total
-  const grossProfitability = totalCosts > 0 ? (grossMargin / totalCosts) * 100 : 0
+  // Rentabilidad sobre ventas totales (Margen / Ventas)
+  const grossProfitability = totalValue > 0 ? (grossMargin / totalValue) * 100 : 0
 
   // ========== CÁLCULOS DE ROI Y MÉTRICAS FINANCIERAS ==========
   
